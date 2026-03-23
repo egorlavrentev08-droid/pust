@@ -13,9 +13,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
 # ==================== НАСТРОЙКИ ====================
-TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'  # Замените на ваш токен
+TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'  # ЗАМЕНИТЕ НА ВАШ ТОКЕН
 ADMIN_CODE = "281488991529"
-
+ADMIN_IDS = [@geforceq]  
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # ==================== БАЗА ДАННЫХ ====================
@@ -74,6 +74,8 @@ engine = create_engine('sqlite:///radcoin_bot.db')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
+scheduler = AsyncIOScheduler()
+
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 def get_user(user_id, username=None):
     session = Session()
@@ -89,7 +91,7 @@ def get_user(user_id, username=None):
     return user
 
 def get_exp_for_level(level):
-    if level == 1:
+    if level <= 1:
         return 0
     total = 0
     for i in range(2, level + 1):
@@ -114,11 +116,118 @@ def calculate_reward(level):
 def calculate_experience():
     return random.randint(1, 20)
 
+async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE = None) -> bool:
+    user_id = update.effective_user.id
+    if user_id in ADMIN_IDS:
+        return True
+    if context and context.user_data.get('is_admin'):
+        return True
+    return False
+
 # ==================== КОМАНДЫ ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     get_user(user.id, user.username)
     await update.message.reply_text("🌟 Добро пожаловать в RadCoin Bot!\nИспользуйте /help для списка команд.")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 RadCoin Bot — Пустошь\n\n"
+        "🎲 /collect - сбор ресурсов (1-4ч)\n"
+        "🏹 /hunt - охота на мутантов (1/сутки)\n"
+        "🛒 /shop - магазин\n"
+        "💰 /buy [товар](кол-во) - купить\n"
+        "📦 /inv - инвентарь\n"
+        "👤 /profile - профиль\n"
+        "📊 /stats - статистика\n"
+        "🏆 /achievements - достижения\n"
+        "🎰 /casino [сумма] - казино\n\n"
+        "🏰 Кланы:\n"
+        "!clan create [название] - создать (5ур,1000RC)\n"
+        "!clan join [название] - вступить (2ур)\n"
+        "!clan info - информация о клане\n"
+        "!clan invest [сумма] - вложить RC\n"
+        "!clan up [коллектор/опыт/удвоение] - улучшить\n"
+        "!clan goodbye (2 раза) - распустить клан\n\n"
+        "🐾 Питомцы:\n"
+        "!pet accept - приручить\n"
+        "!pet deny - отказаться\n"
+        "!pet bye (2 раза) - отпустить\n\n"
+        "👑 Админ-команды:\n"
+        "!givemeplsadmin [код] - получить админку\n"
+        "!phase 1/2/3 - сменить фазу\n"
+        "!give @ник [сумма] {RC,RF,RCr}\n"
+        "!take @ник [сумма] {RC,RF,RCr}\n"
+        "!setlevel @ник [уровень]\n"
+        "!reset @ник\n"
+        "!cd @ник [минуты]\n"
+        "!item give/take @ник [предмет] [кол-во]"
+    )
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    session = Session()
+    db_user = session.query(User).filter_by(user_id=user.id).first()
+    if not db_user:
+        db_user = User(user_id=user.id, username=user.username)
+        session.add(db_user)
+        session.commit()
+    
+    next_exp = get_exp_for_level(db_user.level + 1)
+    exp_needed = next_exp - db_user.experience
+    
+    text = f"👤 {db_user.username}\n☢️ RC: {db_user.radcoins:.0f}\n☣️ RF: {db_user.radfragments}\n⚠️ Уровень: {db_user.level} ({exp_needed} опыта до след. ур.)"
+    if db_user.pet:
+        text += f"\n🐾 Питомец: {db_user.pet}"
+    if db_user.clan_id:
+        clan = session.query(Clan).filter_by(id=db_user.clan_id).first()
+        text += f"\n🏰 Клан: {clan.name} ({db_user.clan_role})"
+    await update.message.reply_text(text)
+    session.close()
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    session = Session()
+    db_user = session.query(User).filter_by(user_id=user.id).first()
+    if not db_user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    
+    text = (
+        f"📊 Статистика {db_user.username}\n"
+        f"🎲 Сборов: {db_user.total_collects}\n"
+        f"☢️ Всего RC: {db_user.total_rc_earned:.0f}\n"
+        f"🏆 Лучший сбор: {db_user.best_collect:.0f}\n"
+        f"🧬 Мутантов убито: {db_user.mutants_killed}\n"
+        f"👾 Мутантов 3 ур: {db_user.mutants_lvl3}\n"
+        f"👑 Боссов: {db_user.bosses_killed}\n"
+        f"💀 Смертей: {db_user.deaths}\n"
+        f"🎯 Критических сборов: {db_user.crit_collects}\n"
+        f"📈 Серия: {db_user.daily_streak} дней"
+    )
+    await update.message.reply_text(text)
+    session.close()
+
+async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    session = Session()
+    db_user = session.query(User).filter_by(user_id=user.id).first()
+    if not db_user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    
+    current = json.loads(db_user.achievements) if db_user.achievements else []
+    text = "🏆 Достижения:\n"
+    ach_names = ['добытчик', 'инвестор', 'терпила', 'кандидат', 'мастер', 'легенда', 'старатель', 'постоянный_клиент']
+    for ach in ach_names:
+        if ach in current:
+            text += f"✅ {ach}\n"
+        else:
+            text += f"⬜ {ach}\n"
+    await update.message.reply_text(text)
+    session.close()
 
 async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -146,14 +255,29 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     base_rc = calculate_reward(actual_level)
     exp_gain = calculate_experience()
     
-    rc_gain = base_rc
+    # Клановый бонус
+    clan_bonus = 0
+    if user.clan_id:
+        clan = session.query(Clan).filter_by(id=user.clan_id).first()
+        if clan:
+            clan_bonus = clan.collect_bonus
+            exp_gain = int(exp_gain * (1 + clan.exp_bonus * 0.05))
+    
+    rc_gain = int(base_rc * (1 + clan_bonus / 100))
+    
+    # Питомцы
     if user.pet == 'рысь':
         rc_gain = int(rc_gain * 1.1)
     if user.pet == 'попугай':
         exp_gain = int(exp_gain * 1.4)
     
+    # Множители
     multiplier = 1
     double_chance = 9
+    if user.clan_id:
+        clan = session.query(Clan).filter_by(id=user.clan_id).first()
+        if clan:
+            double_chance += clan.double_bonus
     if random.random() < 0.01:
         multiplier = 5
         user.crit_collects += 1
@@ -162,6 +286,7 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.crit_collects += 1
     rc_gain *= multiplier
     
+    # Фрагменты
     fragment_gain = 0
     fragment_chance = 1
     if user.pet == 'овчарка':
@@ -169,12 +294,14 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if random.random() < fragment_chance / 100:
         fragment_gain = 1
     
+    # Металлоискатель
     if user.detectors > 0:
         user.detectors -= 1
         rc_gain = int(rc_gain * 0.3)
         if random.random() < 0.25:
             fragment_gain = 10
     
+    # Встреча с мутантом
     meet_chance = 10
     if user.camouflage_until and user.camouflage_until > now:
         meet_chance = 1
@@ -189,6 +316,16 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lost_rc = int(rc_gain * loss_percent / 100)
         rc_gain -= lost_rc
     
+    # Кристаллы (только в клане)
+    crystal_gain = 0
+    if user.clan_id:
+        crystal_gain = random.randint(1, 5)
+        if user.pet == 'пума':
+            crystal_gain = int(crystal_gain * 1.5)
+        clan = session.query(Clan).filter_by(id=user.clan_id).first()
+        if clan:
+            clan.treasury_crystals += crystal_gain
+    
     user.radcoins += rc_gain
     user.radfragments += fragment_gain
     user.experience += exp_gain
@@ -197,15 +334,18 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if rc_gain > user.best_collect:
         user.best_collect = rc_gain
     
+    # Уровень
     level_up = False
     while user.experience >= get_exp_for_level(user.level + 1):
         user.level += 1
         level_up = True
     
+    # Таймер
     interval = get_random_interval(user)
     user.last_collection = now
     user.next_collection_time = now + timedelta(minutes=interval)
     
+    # Ежедневная серия
     last_date = user.last_collect_date.date() if user.last_collect_date else None
     today = now.date()
     if last_date == today - timedelta(days=1):
@@ -213,6 +353,15 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif last_date != today:
         user.daily_streak = 1
     user.last_collect_date = now
+    
+    # Встреча с питомцем
+    pet_encounter = None
+    phase = context.bot_data.get('phase', 2)
+    if phase >= 2 and user.level >= 2:
+        if random.random() < 0.0001:
+            pets = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
+            weights = [1,1,1,1,1,1,1,0.5]
+            pet_encounter = random.choices(pets, weights=weights)[0]
     
     session.commit()
     
@@ -223,25 +372,19 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f" ☣️ +{fragment_gain} RF!"
     if lost_rc > 0:
         msg += f" 😈 Мутант украл {lost_rc} RC!"
+    if crystal_gain > 0:
+        msg += f" 💎 +{crystal_gain} RCr (клан)!"
     if level_up:
         msg += f" 🎉 Новый уровень: {user.level}!"
+    if pet_encounter:
+        msg += f"\n🐾 Вы встретили {pet_encounter}! Приручить? !pet accept / !pet deny"
+        context.user_data['pending_pet'] = pet_encounter
     
     next_hours = interval // 60
     next_minutes = interval % 60
     msg += f"\n⏰ Следующий сбор через {next_hours}ч {next_minutes}мин."
     
     await update.message.reply_text(msg)
-    session.close()
-
-async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    session = Session()
-    db_user = session.query(User).filter_by(user_id=user.id).first()
-    if not db_user:
-        db_user = User(user_id=user.id, username=user.username)
-        session.add(db_user)
-        session.commit()
-    await update.message.reply_text(f"👤 {db_user.username}: {db_user.radcoins:.0f} RC, {db_user.radfragments} RF, ур.{db_user.level}")
     session.close()
 
 async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,6 +402,7 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
         return
     
+    # Шансы охоты
     rifle = user.rifles > 0
     if rifle:
         user.rifles -= 1
@@ -269,22 +413,23 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     roll = random.random() * 100
     if roll < chances[0]:
         reward = 1
-        msg = "🧬 Мутант 1 уровня"
+        target_name = "Мутант 1 уровня"
     elif roll < chances[0] + chances[1]:
         reward = 3
-        msg = "🧪 Мутант 2 уровня"
+        target_name = "Мутант 2 уровня"
     elif roll < chances[0] + chances[1] + chances[2]:
         reward = 10
-        msg = "👾 Мутант 3 уровня"
+        target_name = "Мутант 3 уровня"
         user.mutants_lvl3 += 1
     else:
         reward = 100
-        msg = "👑 Босс Пустоши"
+        target_name = "👑 Босс Пустоши"
         user.bosses_killed += 1
     
     user.mutants_killed += 1
     survived = True
     
+    # Смерть на охоте (только для Босса)
     if reward == 100:
         survive_chance = 10
         if user.armor_rank == 1:
@@ -323,15 +468,24 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user.last_hunt = now
     session.commit()
     
-    text = f"🏹 {msg}! +{reward} RF. ⏰ Следующая охота через 24ч."
+    text = f"🏹 {target_name}! +{reward} RF. ⏰ Следующая охота через 24ч."
     await update.message.reply_text(text)
     session.close()
 
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🛒 Магазин:\n"
-        "щит(10RF) камуфляж(50RF) гарпун(5RF) винтовка(50RF) металлоискатель(3RF)\n"
-        "броня1(1RF) броня2(3RF) броня3(10RF) аптечка(5RF)\n"
+        "🛒 Магазин:\n\n"
+        "Защита:\n"
+        "щит(10RF) - уменьшает потерю до 10% (7дн)\n"
+        "камуфляж(50RF) - шанс встречи 1% (7дн)\n"
+        "броня1(1RF) - 33% выжить на охоте\n"
+        "броня2(3RF) - 67% выжить\n"
+        "броня3(10RF) - 99% выжить\n\n"
+        "Расходники:\n"
+        "гарпун(5RF) - шансы: 70/27/3/0.01%\n"
+        "винтовка(50RF) - шансы: 60/8/30/2%\n"
+        "металлоискатель(3RF) - RC-70%, 25% найти 10RF\n"
+        "аптечка(5RF) - 50% воскреснуть (макс 2)\n\n"
         "Команда: /buy товар(кол-во); товар2(кол-во)"
     )
 
@@ -456,33 +610,569 @@ async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"💀 Проигрыш! -{bet} RC. Баланс: {user.radcoins:.0f} RC")
     session.close()
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📖 RadCoin Bot — Пустошь\n"
-        "Основные команды:\n"
-        "/collect - сбор ресурсов\n"
-        "/hunt - охота на мутантов\n"
-        "/shop - магазин\n"
-        "/profile - профиль\n"
-        "/inv - инвентарь\n"
-        "/casino - казино\n"
-        "/buy - купить предметы\n"
-        "Форматы: /buy аптечка(2); броня1(1)"
+# ==================== ПИТОМЦЫ ====================
+async def pet_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pending = context.user_data.get('pending_pet')
+    if not pending:
+        await update.message.reply_text("🐾 Нет найденного питомца.")
+        return
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if user:
+        user.pet = pending
+        session.commit()
+    session.close()
+    context.user_data.pop('pending_pet')
+    await update.message.reply_text(f"✅ Вы приручили {pending}!")
+
+async def pet_deny(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get('pending_pet'):
+        context.user_data.pop('pending_pet')
+        await update.message.reply_text("🐾 Питомец убежал.")
+    else:
+        await update.message.reply_text("Нет питомца.")
+
+async def pet_bye(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user or not user.pet:
+        await update.message.reply_text("У вас нет питомца.")
+        session.close()
+        return
+    if not context.user_data.get('confirm_bye'):
+        context.user_data['confirm_bye'] = True
+        await update.message.reply_text("❗ Введите !pet bye ещё раз для подтверждения.")
+        session.close()
+        return
+    context.user_data.pop('confirm_bye')
+    user.pet = None
+    session.commit()
+    await update.message.reply_text("✅ Питомец отпущен.")
+    session.close()
+
+# ==================== КЛАНЫ ====================
+async def clan_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = ' '.join(context.args).split()
+    if len(args) < 3 or args[1] != 'create':
+        await update.message.reply_text("❌ Использование: !clan create [название]")
+        return
+    name = ' '.join(args[2:])
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    if user.clan_id:
+        await update.message.reply_text("❌ Вы уже в клане.")
+        session.close()
+        return
+    if user.level < 5:
+        await update.message.reply_text("❌ Нужен 5 уровень.")
+        session.close()
+        return
+    if user.radcoins < 1000:
+        await update.message.reply_text("❌ Нужно 1000 RC.")
+        session.close()
+        return
+    existing = session.query(Clan).filter_by(name=name).first()
+    if existing:
+        await update.message.reply_text("❌ Клан с таким названием уже есть.")
+        session.close()
+        return
+    clan = Clan(name=name, leader_id=user.user_id)
+    session.add(clan)
+    session.flush()
+    user.clan_id = clan.id
+    user.radcoins -= 1000
+    session.commit()
+    await update.message.reply_text(f"✅ Клан {name} создан!")
+    session.close()
+
+async def clan_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = ' '.join(context.args).split()
+    if len(args) < 3 or args[1] != 'join':
+        await update.message.reply_text("❌ Использование: !clan join [название]")
+        return
+    name = ' '.join(args[2:])
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    if user.clan_id:
+        await update.message.reply_text("❌ Вы уже в клане.")
+        session.close()
+        return
+    if user.level < 2:
+        await update.message.reply_text("❌ Нужен 2 уровень.")
+        session.close()
+        return
+    clan = session.query(Clan).filter_by(name=name).first()
+    if not clan:
+        await update.message.reply_text("❌ Клан не найден.")
+        session.close()
+        return
+    user.clan_id = clan.id
+    session.commit()
+    await update.message.reply_text(f"✅ Вы вступили в клан {clan.name}.")
+    session.close()
+
+async def clan_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if len(args) < 2 or args[1] != 'info':
+        await update.message.reply_text("❌ Использование: !clan info")
+        return
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user or not user.clan_id:
+        await update.message.reply_text("❌ Вы не в клане.")
+        session.close()
+        return
+    clan = session.query(Clan).filter_by(id=user.clan_id).first()
+    members = session.query(User).filter_by(clan_id=clan.id).all()
+    leader = session.query(User).filter_by(user_id=clan.leader_id).first()
+    text = (
+        f"🏰 {clan.name}\n"
+        f"👑 Лидер: @{leader.username if leader else '?'}\n"
+        f"👥 Участников: {len(members)}\n"
+        f"💰 Казна: {clan.treasury_coins:.0f} RC\n"
+        f"💎 Кристаллы: {clan.treasury_crystals}\n"
+        f"📈 Улучшения: +{clan.collect_bonus}% RC, +{clan.exp_bonus*5}% опыт, +{clan.double_bonus}% удвоение"
     )
+    await update.message.reply_text(text)
+    session.close()
+
+async def clan_invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = ' '.join(context.args).split()
+    if len(args) < 3 or args[1] != 'invest':
+        await update.message.reply_text("❌ Использование: !clan invest [сумма]")
+        return
+    try:
+        amount = int(args[2])
+    except:
+        await update.message.reply_text("❌ Введите число.")
+        return
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user or not user.clan_id:
+        await update.message.reply_text("❌ Вы не в клане.")
+        session.close()
+        return
+    if user.radcoins < amount:
+        await update.message.reply_text("❌ Недостаточно RC.")
+        session.close()
+        return
+    clan = session.query(Clan).filter_by(id=user.clan_id).first()
+    user.radcoins -= amount
+    clan.treasury_coins += amount
+    session.commit()
+    await update.message.reply_text(f"✅ Вы вложили {amount} RC в казну клана.")
+    session.close()
+
+async def clan_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = ' '.join(context.args).split()
+    if len(args) < 3 or args[1] != 'up':
+        await update.message.reply_text("❌ Использование: !clan up [коллектор/опыт/удвоение]")
+        return
+    upgrade = args[2].lower()
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user or not user.clan_id:
+        await update.message.reply_text("❌ Вы не в клане.")
+        session.close()
+        return
+    clan = session.query(Clan).filter_by(id=user.clan_id).first()
+    if clan.leader_id != user.user_id:
+        await update.message.reply_text("❌ Только лидер может улучшать клан.")
+        session.close()
+        return
+    cost = 0
+    if upgrade == 'коллектор':
+        if clan.collect_bonus >= 10:
+            await update.message.reply_text("❌ Максимальный уровень.")
+            session.close()
+            return
+        cost = 50
+        clan.collect_bonus += 1
+    elif upgrade == 'опыт':
+        if clan.exp_bonus >= 10:
+            await update.message.reply_text("❌ Максимальный уровень.")
+            session.close()
+            return
+        cost = 30
+        clan.exp_bonus += 1
+    elif upgrade == 'удвоение':
+        if clan.double_bonus >= 10:
+            await update.message.reply_text("❌ Максимальный уровень.")
+            session.close()
+            return
+        cost = 25
+        clan.double_bonus += 1
+    else:
+        await update.message.reply_text("❌ Неверный тип улучшения.")
+        session.close()
+        return
+    if clan.treasury_crystals < cost:
+        await update.message.reply_text(f"❌ Не хватает кристаллов. Нужно {cost}.")
+        session.close()
+        return
+    clan.treasury_crystals -= cost
+    session.commit()
+    await update.message.reply_text(f"✅ Улучшение {upgrade} повышено до {getattr(clan, upgrade+'_bonus')} уровня.")
+    session.close()
+
+async def clan_goodbye(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if len(args) < 2 or args[1] != 'goodbye':
+        return
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user or not user.clan_id:
+        await update.message.reply_text("❌ Вы не в клане.")
+        session.close()
+        return
+    clan = session.query(Clan).filter_by(id=user.clan_id).first()
+    if clan.leader_id != user.user_id:
+        await update.message.reply_text("❌ Только лидер может распустить клан.")
+        session.close()
+        return
+    if not context.user_data.get('confirm_clan_delete'):
+        context.user_data['confirm_clan_delete'] = True
+        await update.message.reply_text("❗ Введите !clan goodbye ещё раз для подтверждения.")
+        session.close()
+        return
+    context.user_data.pop('confirm_clan_delete')
+    members = session.query(User).filter_by(clan_id=clan.id).all()
+    for member in members:
+        member.clan_id = None
+        member.clan_role = 'member'
+    session.delete(clan)
+    session.commit()
+    await update.message.reply_text("✅ Клан распущен.")
+    session.close()
+
+# ==================== АДМИН-ПАНЕЛЬ ====================
+async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Использование: !givemeplsadmin [код]")
+        return
+    code = context.args[0]
+    if code == ADMIN_CODE:
+        context.user_data['is_admin'] = True
+        await update.message.reply_text("✅ Вы получили права администратора.")
+    else:
+        await update.message.reply_text("❌ Неверный код.")
+
+async def admin_phase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав.")
+        return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ Использование: !phase 1/2/3")
+        return
+    phase = int(context.args[0])
+    context.bot_data['phase'] = phase
+    await update.message.reply_text(f"✅ Фаза {phase} активирована.")
+
+async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав.")
+        return
+    if len(context.args) < 3:
+        await update.message.reply_text("❌ Использование: !give @ник [сумма] {RC,RF,RCr}")
+        return
+    username = context.args[0].lstrip('@')
+    try:
+        amount = int(context.args[1])
+    except:
+        await update.message.reply_text("❌ Введите число.")
+        return
+    resource = context.args[2].upper()
+    session = Session()
+    user = session.query(User).filter_by(username=username).first()
+    if not user:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        session.close()
+        return
+    if resource == 'RC':
+        user.radcoins += amount
+    elif resource == 'RF':
+        user.radfragments += amount
+    elif resource == 'RCR':
+        user.radcrystals += amount
+    else:
+        await update.message.reply_text("❌ Неверный ресурс.")
+        session.close()
+        return
+    session.commit()
+    await update.message.reply_text(f"✅ Выдано {amount} {resource} пользователю @{username}.")
+    session.close()
+
+async def admin_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав.")
+        return
+    if len(context.args) < 3:
+        await update.message.reply_text("❌ Использование: !take @ник [сумма] {RC,RF,RCr}")
+        return
+    username = context.args[0].lstrip('@')
+    try:
+        amount = int(context.args[1])
+    except:
+        await update.message.reply_text("❌ Введите число.")
+        return
+    resource = context.args[2].upper()
+    session = Session()
+    user = session.query(User).filter_by(username=username).first()
+    if not user:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        session.close()
+        return
+    if resource == 'RC':
+        if user.radcoins < amount:
+            await update.message.reply_text("❌ Недостаточно RC.")
+            session.close()
+            return
+        user.radcoins -= amount
+    elif resource == 'RF':
+        if user.radfragments < amount:
+            await update.message.reply_text("❌ Недостаточно RF.")
+            session.close()
+            return
+        user.radfragments -= amount
+    elif resource == 'RCR':
+        if user.radcrystals < amount:
+            await update.message.reply_text("❌ Недостаточно RCr.")
+            session.close()
+            return
+        user.radcrystals -= amount
+    else:
+        await update.message.reply_text("❌ Неверный ресурс.")
+        session.close()
+        return
+    session.commit()
+    await update.message.reply_text(f"✅ Забрано {amount} {resource} у @{username}.")
+    session.close()
+
+async def admin_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ Использование: !setlevel @ник [уровень]")
+        return
+    username = context.args[0].lstrip('@')
+    try:
+        level = int(context.args[1])
+    except:
+        await update.message.reply_text("❌ Введите число.")
+        return
+    if level < 1 or level > 100:
+        await update.message.reply_text("❌ Уровень от 1 до 100.")
+        return
+    session = Session()
+    user = session.query(User).filter_by(username=username).first()
+    if not user:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        session.close()
+        return
+    user.level = level
+    user.experience = get_exp_for_level(level)
+    session.commit()
+    await update.message.reply_text(f"✅ Уровень @{username} изменён на {level}.")
+    session.close()
+
+async def admin_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав.")
+        return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ Использование: !reset @ник")
+        return
+    username = context.args[0].lstrip('@')
+    session = Session()
+    user = session.query(User).filter_by(username=username).first()
+    if not user:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        session.close()
+        return
+    user.radcoins = 0
+    user.radfragments = 0
+    user.radcrystals = 0
+    user.level = 1
+    user.experience = 0
+    user.total_collects = 0
+    user.total_rc_earned = 0
+    user.best_collect = 0
+    user.mutants_killed = 0
+    user.mutants_lvl3 = 0
+    user.bosses_killed = 0
+    user.deaths = 0
+    user.crit_collects = 0
+    user.daily_streak = 0
+    user.last_collect_date = None
+    user.next_collection_time = None
+    user.last_hunt = None
+    user.cooldown_reducer_until = None
+    user.energy_drink_until = None
+    user.shield_until = None
+    user.camouflage_until = None
+    user.armor_rank = 0
+    user.medkits = 0
+    user.harpoons = 0
+    user.rifles = 0
+    user.detectors = 0
+    user.pet = None
+    user.achievements = '[]'
+    if user.clan_id:
+        user.clan_id = None
+        user.clan_role = 'member'
+    session.commit()
+    await update.message.reply_text(f"✅ Игрок @{username} сброшен.")
+    session.close()
+
+async def admin_cd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ Использование: !cd @ник [минуты]")
+        return
+    username = context.args[0].lstrip('@')
+    try:
+        minutes = int(context.args[1])
+    except:
+        await update.message.reply_text("❌ Введите число.")
+        return
+    session = Session()
+    user = session.query(User).filter_by(username=username).first()
+    if not user:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        session.close()
+        return
+    if minutes == 0:
+        user.next_collection_time = None
+        await update.message.reply_text(f"✅ Кулдаун @{username} сброшен.")
+    else:
+        user.next_collection_time = datetime.now() + timedelta(minutes=minutes)
+        await update.message.reply_text(f"✅ Кулдаун @{username} установлен на {minutes} минут.")
+    session.commit()
+    session.close()
+
+async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав.")
+        return
+    if len(context.args) < 4:
+        await update.message.reply_text("❌ Использование: !item give/take @ник [предмет] [кол-во]")
+        return
+    action = context.args[0].lower()
+    username = context.args[1].lstrip('@')
+    item = context.args[2].lower()
+    try:
+        count = int(context.args[3])
+    except:
+        await update.message.reply_text("❌ Введите число.")
+        return
+    session = Session()
+    user = session.query(User).filter_by(username=username).first()
+    if not user:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        session.close()
+        return
+    
+    if action == 'give':
+        now = datetime.now()
+        if item == 'щит':
+            user.shield_until = now + timedelta(days=7)
+        elif item == 'камуфляж':
+            user.camouflage_until = now + timedelta(days=7)
+        elif item == 'гарпун':
+            user.harpoons += count
+        elif item == 'винтовка':
+            user.rifles += count
+        elif item == 'металлоискатель':
+            user.detectors += count
+        elif item == 'броня1':
+            user.armor_rank = 1
+        elif item == 'броня2':
+            user.armor_rank = 2
+        elif item == 'броня3':
+            user.armor_rank = 3
+        elif item == 'аптечка':
+            user.medkits = min(user.medkits + count, 2)
+        else:
+            await update.message.reply_text(f"❌ Неизвестный предмет: {item}")
+            session.close()
+            return
+        session.commit()
+        await update.message.reply_text(f"✅ Выдано {item} x{count} @{username}.")
+    elif action == 'take':
+        if item == 'щит':
+            user.shield_until = None
+        elif item == 'камуфляж':
+            user.camouflage_until = None
+        elif item == 'гарпун':
+            user.harpoons = max(0, user.harpoons - count)
+        elif item == 'винтовка':
+            user.rifles = max(0, user.rifles - count)
+        elif item == 'металлоискатель':
+            user.detectors = max(0, user.detectors - count)
+        elif item == 'броня1' or item == 'броня2' or item == 'броня3':
+            user.armor_rank = 0
+        elif item == 'аптечка':
+            user.medkits = max(0, user.medkits - count)
+        else:
+            await update.message.reply_text(f"❌ Неизвестный предмет: {item}")
+            session.close()
+            return
+        session.commit()
+        await update.message.reply_text(f"✅ Забрано {item} x{count} у @{username}.")
+    else:
+        await update.message.reply_text("❌ Действие должно быть give или take.")
+    session.close()
 
 # ==================== ЗАПУСК ====================
 def main():
     app = Application.builder().token(TOKEN).build()
     
+    # Основные команды
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("collect", collect))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("profile", profile))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("achievements", achievements))
+    app.add_handler(CommandHandler("collect", collect))
     app.add_handler(CommandHandler("hunt", hunt))
     app.add_handler(CommandHandler("shop", shop))
     app.add_handler(CommandHandler("buy", buy))
     app.add_handler(CommandHandler("inv", inv))
     app.add_handler(CommandHandler("casino", casino))
-    app.add_handler(CommandHandler("help", help_command))
+    
+    # Питомцы
+    app.add_handler(CommandHandler("pet_accept", pet_accept))
+    app.add_handler(CommandHandler("pet_deny", pet_deny))
+    app.add_handler(CommandHandler("pet_bye", pet_bye))
+    
+    # Кланы (через MessageHandler на !clan)
+    app.add_handler(CommandHandler("clan_create", clan_create))
+    app.add_handler(CommandHandler("clan_join", clan_join))
+    app.add_handler(CommandHandler("clan_info", clan_info))
+    app.add_handler(CommandHandler("clan_invest", clan_invest))
+    app.add_handler(CommandHandler("clan_upgrade", clan_upgrade))
+    app.add_handler(CommandHandler("clan_goodbye", clan_goodbye))
+    
+    # Админ-команды
+    app.add_handler(CommandHandler("givemeplsadmin", admin_giveme))
+    app.add_handler(CommandHandler("phase", admin_phase))
+    app.add_handler(CommandHandler("give", admin_give))
+    app.add_handler(CommandHandler("take", admin_take))
+    app.add_handler(CommandHandler("setlevel", admin_setlevel))
+    app.add_handler(CommandHandler("reset", admin_reset))
+    app.add_handler(CommandHandler("cd", admin_cd))
+    app.add_handler(CommandHandler("item", admin_item))
     
     print("Бот запущен!")
     app.run_polling()
