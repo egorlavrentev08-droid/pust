@@ -118,7 +118,7 @@ def get_exp_for_level(level):
         level = MAX_LEVEL
     total = 0
     for i in range(2, level + 1):
-        total += 100 + (i - 2) * 50
+        total += 50 + (i - 2) * 10
     return total
 
 def get_random_interval(user=None):
