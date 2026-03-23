@@ -1783,7 +1783,7 @@ async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Session.remove()
 
 async def admin_pets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выдача/забор питомца (админ) - команда /pets"""
+    """Выдача/забор питомца (админ)"""
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
         return
@@ -1824,52 +1824,28 @@ async def admin_pets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if action == 'give':
             if len(context.args) < 3:
-                await update.message.reply_text("❌ Укажите питомца: `/pets give @ник [питомец]`", parse_mode='Markdown')
+                await update.message.reply_text("❌ /pets give @ник [питомец]")
                 return
             pet_name = context.args[2].lower()
             
             if pet_name not in valid_pets:
-                await update.message.reply_text(f"❌ Неизвестный питомец! Доступны: {', '.join(valid_pets)}")
+                await update.message.reply_text(f"❌ Доступны: {', '.join(valid_pets)}")
                 return
             
             user.pet = pet_name
             session.commit()
-            
-            pet_names = {
-                'овчарка': '🐕 Овчарка', 'волк': '🐺 Волк', 'алабай': '🐕‍🦺 Алабай',
-                'рысь': '🐈 Рысь', 'пума': '🐆 Пума', 'попугай': '🦜 Попугай',
-                'лис': '🦊 Лис', 'кайот': '🐕 Кайот'
-            }
-            
-            await update.message.reply_text(
-                f"✅ *Выдан питомец*\n\n"
-                f"{pet_names.get(pet_name, pet_name)} → @{username}",
-                parse_mode='Markdown'
-            )
+            await update.message.reply_text(f"✅ Выдан питомец {pet_name} @{username}")
         
         elif action == 'take':
             if not user.pet:
-                await update.message.reply_text(f"❌ У @{username} нет питомца!")
+                await update.message.reply_text(f"❌ У @{username} нет питомца")
                 return
-            
-            pet_name = user.pet
-            pet_names = {
-                'овчарка': '🐕 Овчарка', 'волк': '🐺 Волк', 'алабай': '🐕‍🦺 Алабай',
-                'рысь': '🐈 Рысь', 'пума': '🐆 Пума', 'попугай': '🦜 Попугай',
-                'лис': '🦊 Лис', 'кайот': '🐕 Кайот'
-            }
-            
             user.pet = None
             session.commit()
-            
-            await update.message.reply_text(
-                f"✅ *Забран питомец*\n\n"
-                f"{pet_names.get(pet_name, pet_name)} у @{username}",
-                parse_mode='Markdown'
-            )
+            await update.message.reply_text(f"✅ Забран питомец у @{username}")
         
         else:
-            await update.message.reply_text("❌ Используйте `give` или `take`", parse_mode='Markdown')
+            await update.message.reply_text("❌ Используйте give или take")
             
     except Exception as e:
         logger.error(f"Error in admin_pets: {e}")
