@@ -1882,7 +1882,7 @@ def main():
     app.add_handler(CommandHandler("pets", admin_pets))  # админ-команда для питомцев
     
     scheduler.start()
-    logger.info("🌟 RadCoin Bot запущен!")
+    logger.info("🌟 RadCoin Bot запущен! Введите /collect")
     app.run_polling()
 
 if __name__ == '__main__':
