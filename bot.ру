@@ -1,1 +1,491 @@
+import logging
+import random
+import json
+import re
+from datetime import datetime, timedelta
+from telegram import Update
+from telegram.ext import (
+    Application, CommandHandler, ContextTypes
+)
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
 
+# ==================== НАСТРОЙКИ ====================
+TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'  # Замените на ваш токен
+ADMIN_CODE = "281488991529"
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+# ==================== БАЗА ДАННЫХ ====================
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, unique=True)
+    username = Column(String)
+    radcoins = Column(Float, default=0)
+    radfragments = Column(Integer, default=0)
+    radcrystals = Column(Integer, default=0)
+    level = Column(Integer, default=1)
+    experience = Column(Integer, default=0)
+    last_collection = Column(DateTime, nullable=True)
+    next_collection_time = Column(DateTime, nullable=True)
+    last_hunt = Column(DateTime, nullable=True)
+    cooldown_reducer_until = Column(DateTime, nullable=True)
+    energy_drink_until = Column(DateTime, nullable=True)
+    shield_until = Column(DateTime, nullable=True)
+    camouflage_until = Column(DateTime, nullable=True)
+    armor_rank = Column(Integer, default=0)
+    medkits = Column(Integer, default=0)
+    harpoons = Column(Integer, default=0)
+    rifles = Column(Integer, default=0)
+    detectors = Column(Integer, default=0)
+    total_collects = Column(Integer, default=0)
+    total_rc_earned = Column(Float, default=0)
+    best_collect = Column(Float, default=0)
+    mutants_killed = Column(Integer, default=0)
+    mutants_lvl3 = Column(Integer, default=0)
+    bosses_killed = Column(Integer, default=0)
+    deaths = Column(Integer, default=0)
+    crit_collects = Column(Integer, default=0)
+    daily_streak = Column(Integer, default=0)
+    last_collect_date = Column(DateTime, nullable=True)
+    achievements = Column(String, default='[]')
+    pet = Column(String, nullable=True)
+    clan_id = Column(Integer, ForeignKey('clans.id'), nullable=True)
+    clan_role = Column(String, default='member')
+
+class Clan(Base):
+    __tablename__ = 'clans'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    leader_id = Column(Integer)
+    created_at = Column(DateTime, default=datetime.now)
+    treasury_coins = Column(Float, default=0)
+    treasury_crystals = Column(Integer, default=0)
+    collect_bonus = Column(Integer, default=0)
+    exp_bonus = Column(Integer, default=0)
+    double_bonus = Column(Integer, default=0)
+
+engine = create_engine('sqlite:///radcoin_bot.db')
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+def get_user(user_id, username=None):
+    session = Session()
+    user = session.query(User).filter_by(user_id=user_id).first()
+    if not user:
+        user = User(user_id=user_id, username=username)
+        session.add(user)
+        session.commit()
+    elif username and user.username != username:
+        user.username = username
+        session.commit()
+    session.close()
+    return user
+
+def get_exp_for_level(level):
+    if level == 1:
+        return 0
+    total = 0
+    for i in range(2, level + 1):
+        total += 100 + (i - 2) * 50
+    return total
+
+def get_random_interval(user=None):
+    base = random.randint(60, 240)
+    if user and user.cooldown_reducer_until and user.cooldown_reducer_until > datetime.now():
+        return base // 2
+    if user and user.pet == 'кайот':
+        return base // 2
+    return base
+
+def calculate_reward(level):
+    base = random.randint(11, 150)
+    bonus = 1 + (level - 1) * 0.05
+    if bonus > 1 + 99 * 0.05:
+        bonus = 1 + 99 * 0.05
+    return int(base * bonus)
+
+def calculate_experience():
+    return random.randint(1, 20)
+
+# ==================== КОМАНДЫ ====================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    get_user(user.id, user.username)
+    await update.message.reply_text("🌟 Добро пожаловать в RadCoin Bot!\nИспользуйте /help для списка команд.")
+
+async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    session = Session()
+    user = session.query(User).filter_by(user_id=user_id).first()
+    if not user:
+        user = User(user_id=user_id, username=username)
+        session.add(user)
+        session.commit()
+    
+    now = datetime.now()
+    if user.next_collection_time and now < user.next_collection_time:
+        remaining = user.next_collection_time - now
+        hours = remaining.seconds // 3600
+        minutes = (remaining.seconds % 3600) // 60
+        await update.message.reply_text(f"⏰ Следующий сбор через {hours}ч {minutes}мин.")
+        session.close()
+        return
+    
+    actual_level = user.level
+    if user.energy_drink_until and user.energy_drink_until > now:
+        actual_level = min(user.level + 5, 100)
+    
+    base_rc = calculate_reward(actual_level)
+    exp_gain = calculate_experience()
+    
+    rc_gain = base_rc
+    if user.pet == 'рысь':
+        rc_gain = int(rc_gain * 1.1)
+    if user.pet == 'попугай':
+        exp_gain = int(exp_gain * 1.4)
+    
+    multiplier = 1
+    double_chance = 9
+    if random.random() < 0.01:
+        multiplier = 5
+        user.crit_collects += 1
+    elif random.random() < double_chance / 100:
+        multiplier = 2
+        user.crit_collects += 1
+    rc_gain *= multiplier
+    
+    fragment_gain = 0
+    fragment_chance = 1
+    if user.pet == 'овчарка':
+        fragment_chance += 5
+    if random.random() < fragment_chance / 100:
+        fragment_gain = 1
+    
+    if user.detectors > 0:
+        user.detectors -= 1
+        rc_gain = int(rc_gain * 0.3)
+        if random.random() < 0.25:
+            fragment_gain = 10
+    
+    meet_chance = 10
+    if user.camouflage_until and user.camouflage_until > now:
+        meet_chance = 1
+    if user.pet == 'лис':
+        meet_chance = meet_chance // 2 if meet_chance > 1 else 1
+    
+    lost_rc = 0
+    if random.random() < meet_chance / 100:
+        loss_percent = 50
+        if user.shield_until and user.shield_until > now:
+            loss_percent = 10
+        lost_rc = int(rc_gain * loss_percent / 100)
+        rc_gain -= lost_rc
+    
+    user.radcoins += rc_gain
+    user.radfragments += fragment_gain
+    user.experience += exp_gain
+    user.total_collects += 1
+    user.total_rc_earned += rc_gain
+    if rc_gain > user.best_collect:
+        user.best_collect = rc_gain
+    
+    level_up = False
+    while user.experience >= get_exp_for_level(user.level + 1):
+        user.level += 1
+        level_up = True
+    
+    interval = get_random_interval(user)
+    user.last_collection = now
+    user.next_collection_time = now + timedelta(minutes=interval)
+    
+    last_date = user.last_collect_date.date() if user.last_collect_date else None
+    today = now.date()
+    if last_date == today - timedelta(days=1):
+        user.daily_streak += 1
+    elif last_date != today:
+        user.daily_streak = 1
+    user.last_collect_date = now
+    
+    session.commit()
+    
+    msg = f"🎲 Сбор: +{rc_gain} RC, +{exp_gain} опыта."
+    if multiplier > 1:
+        msg += f" ✨ x{multiplier}!"
+    if fragment_gain > 0:
+        msg += f" ☣️ +{fragment_gain} RF!"
+    if lost_rc > 0:
+        msg += f" 😈 Мутант украл {lost_rc} RC!"
+    if level_up:
+        msg += f" 🎉 Новый уровень: {user.level}!"
+    
+    next_hours = interval // 60
+    next_minutes = interval % 60
+    msg += f"\n⏰ Следующий сбор через {next_hours}ч {next_minutes}мин."
+    
+    await update.message.reply_text(msg)
+    session.close()
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    session = Session()
+    db_user = session.query(User).filter_by(user_id=user.id).first()
+    if not db_user:
+        db_user = User(user_id=user.id, username=user.username)
+        session.add(db_user)
+        session.commit()
+    await update.message.reply_text(f"👤 {db_user.username}: {db_user.radcoins:.0f} RC, {db_user.radfragments} RF, ур.{db_user.level}")
+    session.close()
+
+async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    session = Session()
+    user = session.query(User).filter_by(user_id=user_id).first()
+    if not user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    
+    now = datetime.now()
+    if user.last_hunt and now - user.last_hunt < timedelta(days=1):
+        await update.message.reply_text("⏰ Охота доступна раз в сутки.")
+        session.close()
+        return
+    
+    rifle = user.rifles > 0
+    if rifle:
+        user.rifles -= 1
+        chances = [60, 8, 30, 2]
+    else:
+        chances = [90, 10, 0.99, 0.01]
+    
+    roll = random.random() * 100
+    if roll < chances[0]:
+        reward = 1
+        msg = "🧬 Мутант 1 уровня"
+    elif roll < chances[0] + chances[1]:
+        reward = 3
+        msg = "🧪 Мутант 2 уровня"
+    elif roll < chances[0] + chances[1] + chances[2]:
+        reward = 10
+        msg = "👾 Мутант 3 уровня"
+        user.mutants_lvl3 += 1
+    else:
+        reward = 100
+        msg = "👑 Босс Пустоши"
+        user.bosses_killed += 1
+    
+    user.mutants_killed += 1
+    survived = True
+    
+    if reward == 100:
+        survive_chance = 10
+        if user.armor_rank == 1:
+            survive_chance = 33
+        elif user.armor_rank == 2:
+            survive_chance = 67
+        elif user.armor_rank == 3:
+            survive_chance = 99
+        if user.pet == 'волк':
+            survive_chance += 10
+        survive_chance = min(99, survive_chance)
+        if random.random() * 100 > survive_chance:
+            survived = False
+            if user.medkits > 0:
+                if random.random() < 0.5:
+                    survived = True
+                    user.medkits -= 1
+                elif user.medkits > 1 and random.random() < 0.5:
+                    survived = True
+                    user.medkits -= 2
+            if not survived:
+                user.deaths += 1
+                user.armor_rank = 0
+                user.medkits = 0
+                user.harpoons = 0
+                user.rifles = 0
+                user.detectors = 0
+                if user.shield_until:
+                    user.shield_until -= timedelta(days=1)
+                if user.camouflage_until:
+                    user.camouflage_until -= timedelta(days=1)
+                reward = 0
+    
+    if survived:
+        user.radfragments += reward
+    user.last_hunt = now
+    session.commit()
+    
+    text = f"🏹 {msg}! +{reward} RF. ⏰ Следующая охота через 24ч."
+    await update.message.reply_text(text)
+    session.close()
+
+async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🛒 Магазин:\n"
+        "щит(10RF) камуфляж(50RF) гарпун(5RF) винтовка(50RF) металлоискатель(3RF)\n"
+        "броня1(1RF) броня2(3RF) броня3(10RF) аптечка(5RF)\n"
+        "Команда: /buy товар(кол-во); товар2(кол-во)"
+    )
+
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Пример: /buy аптечка(2); броня1(1)")
+        return
+    args = ' '.join(context.args)
+    pattern = r'([а-яё]+)\((\d+)\)'
+    matches = re.findall(pattern, args)
+    if not matches:
+        await update.message.reply_text("❌ Неверный формат.")
+        return
+    
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    
+    prices = {
+        'щит': 10, 'камуфляж': 50, 'гарпун': 5, 'винтовка': 50, 'металлоискатель': 3,
+        'броня1': 1, 'броня2': 3, 'броня3': 10, 'аптечка': 5
+    }
+    total_cost = 0
+    items = []
+    for name, count in matches:
+        count = int(count)
+        if name not in prices:
+            await update.message.reply_text(f"❌ Неизвестный товар: {name}")
+            session.close()
+            return
+        total_cost += prices[name] * count
+        items.append((name, count))
+    
+    if user.radfragments < total_cost:
+        await update.message.reply_text(f"❌ Не хватает RF. Нужно {total_cost}")
+        session.close()
+        return
+    
+    user.radfragments -= total_cost
+    now = datetime.now()
+    for name, count in items:
+        if name == 'щит':
+            user.shield_until = now + timedelta(days=7)
+        elif name == 'камуфляж':
+            user.camouflage_until = now + timedelta(days=7)
+        elif name == 'гарпун':
+            user.harpoons += count
+        elif name == 'винтовка':
+            user.rifles += count
+        elif name == 'металлоискатель':
+            user.detectors += count
+        elif name == 'броня1':
+            user.armor_rank = 1
+        elif name == 'броня2':
+            user.armor_rank = 2
+        elif name == 'броня3':
+            user.armor_rank = 3
+        elif name == 'аптечка':
+            user.medkits = min(user.medkits + count, 2)
+    
+    session.commit()
+    await update.message.reply_text(f"✅ Куплено: {', '.join(f'{n}x{c}' for n,c in items)}")
+    session.close()
+
+async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    
+    text = "📦 Инвентарь:\n"
+    if user.shield_until and user.shield_until > datetime.now():
+        text += f"🛡️ Щит: до {user.shield_until.strftime('%d.%m %H:%M')}\n"
+    if user.camouflage_until and user.camouflage_until > datetime.now():
+        text += f"🎭 Камуфляж: до {user.camouflage_until.strftime('%d.%m %H:%M')}\n"
+    if user.armor_rank:
+        text += f"🥉 Броня {user.armor_rank} ранга\n"
+    text += f"💊 Аптечки: {user.medkits}/2\n"
+    text += f"🎣 Гарпуны: {user.harpoons}\n"
+    text += f"🔫 Винтовки: {user.rifles}\n"
+    text += f"🔎 Металлоискатели: {user.detectors}\n"
+    if user.pet:
+        text += f"🐾 Питомец: {user.pet}\n"
+    await update.message.reply_text(text)
+    session.close()
+
+async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Использование: /casino [сумма]")
+        return
+    try:
+        bet = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ Введите число.")
+        return
+    
+    session = Session()
+    user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+    if not user:
+        await update.message.reply_text("❌ Сначала используйте /start")
+        session.close()
+        return
+    
+    if bet <= 0 or user.radcoins < bet:
+        await update.message.reply_text("❌ Недостаточно RC.")
+        session.close()
+        return
+    
+    user.radcoins -= bet
+    if random.random() < 0.03:
+        win = bet * 50
+        user.radcoins += win
+        session.commit()
+        await update.message.reply_text(f"🎰 ДЖЕКПОТ! +{win} RC. Баланс: {user.radcoins:.0f} RC")
+    else:
+        session.commit()
+        await update.message.reply_text(f"💀 Проигрыш! -{bet} RC. Баланс: {user.radcoins:.0f} RC")
+    session.close()
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 RadCoin Bot — Пустошь\n"
+        "Основные команды:\n"
+        "/collect - сбор ресурсов\n"
+        "/hunt - охота на мутантов\n"
+        "/shop - магазин\n"
+        "/profile - профиль\n"
+        "/inv - инвентарь\n"
+        "/casino - казино\n"
+        "/buy - купить предметы\n"
+        "Форматы: /buy аптечка(2); броня1(1)"
+    )
+
+# ==================== ЗАПУСК ====================
+def main():
+    app = Application.builder().token(TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("collect", collect))
+    app.add_handler(CommandHandler("profile", profile))
+    app.add_handler(CommandHandler("hunt", hunt))
+    app.add_handler(CommandHandler("shop", shop))
+    app.add_handler(CommandHandler("buy", buy))
+    app.add_handler(CommandHandler("inv", inv))
+    app.add_handler(CommandHandler("casino", casino))
+    app.add_handler(CommandHandler("help", help_command))
+    
+    print("Бот запущен!")
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
