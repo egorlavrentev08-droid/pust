@@ -12,6 +12,102 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 
+import shutil
+import os
+from datetime import datetime
+
+# ==================== АВТОМАТИЧЕСКИЕ БЭКАПЫ ====================
+
+# Папка для бэкапов
+BACKUP_DIR = '/app/data/backups'
+
+# Создаём папку для бэкапов, если её нет
+if not os.path.exists(BACKUP_DIR):
+    os.makedirs(BACKUP_DIR)
+
+def auto_backup():
+    """Автоматическое создание бэкапа базы данных каждый час"""
+    try:
+        db_path = 'radcoin_bot.db'
+        if os.path.exists(db_path):
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_name = f"radcoin_bot.db.backup_{timestamp}.db"
+            backup_path = os.path.join(BACKUP_DIR, backup_name)
+            
+            shutil.copy(db_path, backup_path)
+            
+            # Удаляем старые бэкапы (оставляем последние 24)
+            backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith('radcoin_bot.db.backup')])
+            if len(backups) > 24:
+                for old_backup in backups[:-24]:
+                    os.remove(os.path.join(BACKUP_DIR, old_backup))
+            
+            logger.info(f"✅ Автобэкап создан: {backup_name}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка автобэкапа: {e}")
+
+async def backups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать список доступных бэкапов"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    try:
+        backups_list = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith('radcoin_bot.db.backup')])
+        
+        if not backups_list:
+            await update.message.reply_text("📋 *Нет сохранённых бэкапов*", parse_mode='Markdown')
+            return
+        
+        text = "💾 *Список бэкапов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        for i, backup in enumerate(backups_list[-10:], 1):
+            text += f"{i}. `{backup}`\n"
+        
+        text += "\n📌 *Восстановление:*\n"
+        text += "`/restore backup_имя_файла`\n\n"
+        text += "💡 *Бэкапы создаются автоматически каждый час*"
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in backups: {e}")
+        await update.message.reply_text("❌ Ошибка")
+
+async def restore_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Восстановить базу данных из бэкапа"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "❌ /restore [имя_бэкапа]\n\nПример: `/restore radcoin_bot.db.backup_20260324_120000.db`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    backup_name = context.args[0]
+    backup_path = os.path.join(BACKUP_DIR, backup_name)
+    
+    if not os.path.exists(backup_path):
+        await update.message.reply_text(f"❌ Бэкап `{backup_name}` не найден!", parse_mode='Markdown')
+        return
+    
+    # Делаем бэкап текущей БД перед восстановлением
+    auto_backup()
+    
+    # Восстанавливаем базу
+    shutil.copy(backup_path, 'radcoin_bot.db')
+    
+    await update.message.reply_text(
+        f"✅ *База данных восстановлена из бэкапа!*\n\n"
+        f"📁 Бэкап: `{backup_name}`\n\n"
+        f"⚠️ *Перезапустите бота командой:* `python bot.py`",
+        parse_mode='Markdown'
+    )
+    
+    # Завершаем процесс
+    os._exit(0)
+
 # ==================== НАСТРОЙКИ ====================
 TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'
 ADMIN_CODE = os.getenv('ADMIN_CODE', '281488991529')
@@ -1916,7 +2012,10 @@ def main():
     app.add_handler(CommandHandler("item", admin_item))
     app.add_handler(CommandHandler("players", admin_players))
     app.add_handler(CommandHandler("pets", admin_pets))  # админ-команда для питомцев
-    
+    app.add_handler(CommandHandler("backups", backups))
+    app.add_handler(CommandHandler("restore", restore_backup))
+    # Добавляем автобэкап каждый час
+    scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
     logger.info("🌟 RadCoin Bot запущен! Используйте /collect")
     app.run_polling()
