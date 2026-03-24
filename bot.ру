@@ -1505,41 +1505,37 @@ async def clan_goodbye(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Session.remove()
 
 async def clan_invite_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Приглашение во все чаты (упрощённая версия)"""
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user or not user.clan_id:
-            await update.message.reply_text("❌ Вы не в клане")
+            await update.message.reply_text("❌ Вы не в клане!")
             return
+        
         clan = session.query(Clan).filter_by(id=user.clan_id).first()
         if not clan:
-            await update.message.reply_text("❌ Клан не найден")
-            return
-        if clan.leader_id != user.user_id and user.clan_role not in ['elder', 'codirector']:
-            await update.message.reply_text("❌ Только лидер, старейшина или соруководитель")
+            await update.message.reply_text("❌ Клан не найден!")
             return
         
-        chats = set()
-        async for update_obj in context.application.get_updates():
-            if update_obj.message and update_obj.message.chat.type != 'private':
-                chats.add(update_obj.message.chat.id)
+        if clan.leader_id != user.user_id:
+            await update.message.reply_text("❌ Только лидер может приглашать!")
+            return
         
-        invited = 0
-        for chat_id in chats:
-            try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"🏰 *Приглашение в клан {clan.name}*\n\n👑 Лидер: @{user.username}\n\nВступить: `/clan join {clan.name}`",
-                    parse_mode='Markdown'
-                )
-                invited += 1
-            except:
-                pass
+        await update.message.reply_text(
+            f"📢 *Как пригласить в клан {clan.name}*\n\n"
+            f"1. Добавь бота в нужный чат\n"
+            f"2. Напиши в чате:\n"
+            f"`/clan join {clan.name}`\n\n"
+            f"Или отправь ссылку-приглашение:\n"
+            f"`https://t.me/{context.bot.username}?start=join_{clan.name}`\n\n"
+            f"💡 Бот должен быть администратором чата для отправки сообщений.",
+            parse_mode='Markdown'
+        )
         
-        await update.message.reply_text(f"✅ *Приглашения отправлены!*\n\nОтправлено в {invited} чатов", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_invite_all: {e}")
-        await update.message.reply_text("❌ Ошибка")
+        await update.message.reply_text("❌ Ошибка!")
     finally:
         Session.remove()
 
