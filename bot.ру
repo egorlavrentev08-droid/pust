@@ -1333,13 +1333,13 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_achievements = check_achievements(user, session)
 
         # ==================== ВЫПАДЕНИЕ СУНДУКОВ ====================
-        chest_found = None
-        if phase >= 2:
-        chest_roll = random.random() * 100
-        if chest_roll < 0.09:
+chest_found = None
+if phase >= 2:
+    chest_roll = random.random() * 100
+    if chest_roll < 0.09:
         user.chest_legendary += 1
         chest_found = "🟠 Легендарный сундук"
-        elif chest_roll < 0.39:
+    elif chest_roll < 0.39:
         user.chest_epic += 1
         chest_found = "🟣 Эпический сундук"
     elif chest_roll < 3.39:
