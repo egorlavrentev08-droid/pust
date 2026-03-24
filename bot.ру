@@ -69,7 +69,7 @@ class User(Base):
     total_purchases = Column(Integer, default=0)
     last_seen = Column(DateTime, default=datetime.now)
     notifications_enabled = Column(Boolean, default=False)
-    teressa = Column(Boolean, default=False)  # Артефакт 100% выживаемости
+    teressa = Column(Boolean, default=False)
 
 class Clan(Base):
     __tablename__ = 'clans'
@@ -286,7 +286,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/cd @ник [минуты]\n"
         "/resethunt @ник — сброс кд охоты\n"
         "/item give/take @ник [предмет] [кол-во]\n"
-        "/pet give/take @ник [питомец]\n"
+        "/pets give/take @ник [питомец]\n"
         "/players — список игроков"
     )
     await send_to_private(update, context, text)
@@ -1390,7 +1390,6 @@ async def clan_invite_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Только лидер, старейшина или соруководитель")
             return
         
-        # Получаем чаты, где есть бот
         chats = set()
         async for update_obj in context.application.get_updates():
             if update_obj.message and update_obj.message.chat.type != 'private':
@@ -1782,44 +1781,75 @@ async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
-async def admin_pet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_pets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выдача/забор питомца (админ)"""
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
-    if len(context.args) < 3:
-        await update.message.reply_text("❌ /pets give/take @ник [питомец]")
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "🐾 *Управление питомцами*\n\n"
+            "Использование:\n"
+            "`/pets give @ник [питомец]` — выдать питомца\n"
+            "`/pets take @ник` — забрать питомца\n\n"
+            "Доступные питомцы:\n"
+            "• овчарка — +5% к шансу найти RF\n"
+            "• волк — +10% к выживаемости\n"
+            "• алабай — +1% к шансу встретить Босса\n"
+            "• рысь — +10% к добыче RC\n"
+            "• пума — +50% к клановым кристаллам\n"
+            "• попугай — +40% к опыту\n"
+            "• лис — уменьшает шанс встречи с мутантом\n"
+            "• кайот — уменьшает кулдаун вдвое\n\n"
+            "Примеры:\n"
+            "`/pets give @Творец кайот`\n"
+            "`/pets take @Игрок`",
+            parse_mode='Markdown'
+        )
         return
+    
     action = context.args[0].lower()
     username = context.args[1].lstrip('@')
+    
     session = Session()
     try:
         user = session.query(User).filter_by(username=username).first()
         if not user:
-            await update.message.reply_text("❌ Пользователь не найден")
+            await update.message.reply_text("❌ Пользователь не найден!")
             return
+        
+        valid_pets = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
+        
         if action == 'give':
-            pet_name = context.args[2].lower()
-            valid = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
-            if pet_name not in valid:
-                await update.message.reply_text(f"❌ {', '.join(valid)}")
+            if len(context.args) < 3:
+                await update.message.reply_text("❌ /pets give @ник [питомец]")
                 return
+            pet_name = context.args[2].lower()
+            
+            if pet_name not in valid_pets:
+                await update.message.reply_text(f"❌ Доступны: {', '.join(valid_pets)}")
+                return
+            
             user.pet = pet_name
             session.commit()
-            await update.message.reply_text(f"🐾 *Выдан {pet_name} @{username}*", parse_mode='Markdown')
+            await update.message.reply_text(f"✅ Выдан питомец {pet_name} @{username}")
+        
         elif action == 'take':
             if not user.pet:
                 await update.message.reply_text(f"❌ У @{username} нет питомца")
                 return
-            pet_name = user.pet
             user.pet = None
             session.commit()
-            await update.message.reply_text(f"🐾 *Забран {pet_name} у @{username}*", parse_mode='Markdown')
+            await update.message.reply_text(f"✅ Забран питомец у @{username}")
+        
         else:
-            await update.message.reply_text("❌ give или take")
+            await update.message.reply_text("❌ Используйте give или take")
+            
     except Exception as e:
-        logger.error(f"Error in admin_pet: {e}")
+        logger.error(f"Error in admin_pets: {e}")
         session.rollback()
-        await update.message.reply_text("❌ Ошибка")
+        await update.message.reply_text("❌ Ошибка при выполнении команды!")
     finally:
         Session.remove()
 
@@ -1882,7 +1912,7 @@ def main():
     app.add_handler(CommandHandler("pets", admin_pets))  # админ-команда для питомцев
     
     scheduler.start()
-    logger.info("🌟 RadCoin Bot запущен! Введите /collect")
+    logger.info("🌟 RadCoin Bot запущен!")
     app.run_polling()
 
 if __name__ == '__main__':
