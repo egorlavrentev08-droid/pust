@@ -624,30 +624,30 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if user.has_rifle:
             weapon = "🔫 *Снайперская винтовка*"
-            chances = [60, 8, 30, 2]
+            chances = [40, 30, 20, 10]
         elif user.has_harpoon:
             weapon = "🎣 *Гарпун*"
-            chances = [70, 27, 3, 0.01]
+            chances = [70, 20, 9, 1]
         else:
-            weapon = "🗡️ *Обычное оружие*"
+            weapon = "🗡️ *Обычное Оружие*"
             chances = [89, 10, 0.99, 0.01]
         
         roll = random.random() * 100
         if roll < chances[0]:
-            reward = 1
+            reward = 10
             target_name = "🧬 *Мутант 1 уровня*"
             target_desc = "слабый, но опасный мутант"
         elif roll < chances[0] + chances[1]:
-            reward = 3
+            reward = 50
             target_name = "🧪 *Мутант 2 уровня*"
             target_desc = "крепкий и агрессивный хищник"
         elif roll < chances[0] + chances[1] + chances[2]:
-            reward = 10
+            reward = 100
             target_name = "👾 *Мутант 3 уровня*"
             target_desc = "мощный, покрытый броней зверь"
             user.mutants_lvl3 += 1
         else:
-            reward = 100
+            reward = 1000
             target_name = "👑 *БОСС ПУСТОШИ*"
             target_desc = "легендарное чудовище"
             user.bosses_killed += 1
@@ -695,7 +695,7 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode='Markdown')
         
         if user.notifications_enabled:
-            next_hunt_time = now + timedelta(days=1)
+            next_hunt_time = now + timedelta(hours=6)
             schedule_notification(user.user_id, context.bot, 'hunt', next_hunt_time)
     except Exception as e:
         logger.error(f"Error in hunt: {e}")
@@ -710,9 +710,9 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━━━━\n*🛡️ ЗАЩИТА*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "• *щит* (250) — 🛡️ потеря 50%→10% (7д)\n"
         "• *камуфляж* (1250) — 🎭 шанс встречи 1% (7д)\n"
-        "• *броня1* (100) — 🥉 33% выжить\n"
-        "• *броня2* (300) — 🥈 67% выжить\n"
-        "• *броня3* (1000) — 🥇 99% выжить\n\n"
+        "• *броня1* (1000) — 🥉 33% выжить\n"
+        "• *броня2* (3000) — 🥈 67% выжить\n"
+        "• *броня3* (10000) — 🥇 99% выжить\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n*⚔️ ОРУЖИЕ*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "• *гарпун* (500) — 🎣 70/27/3/0.01% (многоразовый)\n"
         "• *винтовка* (5000) — 🔫 60/8/30/2% (многоразовая)\n"
@@ -752,7 +752,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         prices = {
             'щит': 250, 'камуфляж': 1250, 'гарпун': 500, 'винтовка': 5000,
-            'металлоискатель': 750, 'броня1': 100, 'броня2': 300, 'броня3': 1000,
+            'металлоискатель': 750, 'броня1': 1000, 'броня2': 3000, 'броня3': 10000,
             'аптечка': 125, 'энергетик': 250, 'редуктор': 1250
         }
         
@@ -840,12 +840,12 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("🎰 /casino [сумма]\nШанс 7% — выигрыш x25!", parse_mode='Markdown')
+        await update.message.reply_text("🎰 /casino [сумма]\nШанс победы 7% — выигрыш x25!", parse_mode='Markdown')
         return
     try:
         bet = int(context.args[0])
         if bet <= 0:
-            await update.message.reply_text("❌ Положительная ставка!")
+            await update.message.reply_text("❌ Ты Дурак?!")
             return
     except ValueError:
         await update.message.reply_text("❌ Введите число!")
@@ -924,16 +924,16 @@ async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             "🛠️ *Крафт*\n\n"
-            "💊 аптечка_обычная (25%) — 1 RF\n"
-            "💊 аптечка_усиленная (40%) — 2 RF + 35 RC\n"
-            "💊 аптечка_про (60%) — 3 RF + 100 RC\n"
-            "💊 аптечка_легендарная (80%) — 8 RF + 350 RC\n"
-            "🔎 металлоискатель — 2 RF + 20 RC\n"
-            "🎣 гарпун — 3 RF + 70 RC\n"
-            "🔫 винтовка — 10 RF + 350 RC\n"
-            "🥈 броня2 — 13 RF + 270 RC\n"
-            "🥇 броня3 — 27 RF + 670 RC\n"
-            "✨ тересса — 170 RF + 17000 RC (50 ур, 100% выживаемость)",
+            "💊 аптечкаобыч (25%) — 2 RF\n"
+            "💊 аптечкасил (40%) — 5 RF + 35 RC\n"
+            "💊 аптечкапро (60%) — 10 RF + 100 RC\n"
+            "💊 аптечкалег (80%) — 25 RF + 350 RC\n"
+            "🔎 металлоискатель — 8 RF + 20 RC\n"
+            "🎣 гарпун — 300 RF + 700 RC\n"
+            "🔫 винтовка — 250 RF + 3500 RC\n"
+            "🥈 броня2 — 250 RF + 2700 RC\n"
+            "🥇 броня3 — 800 RF + 6700 RC\n"
+            "✨ тересса — 100000 RF + 170000 RC (50 ур, 100% выживаемость)",
             parse_mode='Markdown'
         )
         return
@@ -947,16 +947,16 @@ async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         recipes = {
-            'аптечка_обычная': {'rf': 1, 'rc': 0, 'level': 1},
-            'аптечка_усиленная': {'rf': 2, 'rc': 35, 'level': 4},
-            'аптечка_про': {'rf': 3, 'rc': 100, 'level': 11},
-            'аптечка_легендарная': {'rf': 8, 'rc': 350, 'level': 21},
-            'металлоискатель': {'rf': 2, 'rc': 20, 'level': 1},
-            'гарпун': {'rf': 3, 'rc': 70, 'level': 1},
-            'винтовка': {'rf': 10, 'rc': 350, 'level': 4},
-            'броня2': {'rf': 13, 'rc': 270, 'level': 11},
-            'броня3': {'rf': 27, 'rc': 670, 'level': 21},
-            'тересса': {'rf': 170, 'rc': 17000, 'level': 50}
+            'аптечкаобыч': {'rf': 2, 'rc': 0, 'level': 1},
+            'аптечкасил': {'rf': 5, 'rc': 35, 'level': 4},
+            'аптечкапро': {'rf': 10, 'rc': 100, 'level': 11},
+            'аптечкалег': {'rf': 25, 'rc': 350, 'level': 21},
+            'металлоискатель': {'rf': 8, 'rc': 20, 'level': 1},
+            'гарпун': {'rf': 300, 'rc': 700, 'level': 1},
+            'винтовка': {'rf': 250, 'rc': 3500, 'level': 4},
+            'броня2': {'rf': 250, 'rc': 2700, 'level': 11},
+            'броня3': {'rf': 800, 'rc': 6700, 'level': 21},
+            'тересса': {'rf': 100000, 'rc': 170000, 'level': 50}
         }
         
         if item not in recipes:
