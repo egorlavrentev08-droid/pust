@@ -611,45 +611,49 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         phase = context.bot_data.get('phase', 1)
         if phase < 2:
-            await update.message.reply_text("❌ *Охота Доступна только на второй фазе! ", parse_mode='Markdown')
+            await update.message.reply_text("❌ *Охота недоступна!* /phase 2", parse_mode='Markdown')
             return
         
         now = datetime.now()
-cooldown = timedelta(days=1)
-
-if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
-    cooldown = timedelta(hours=12)
-
-if user.pet == 'кайот':
-    cooldown = timedelta(hours=12)
-
-if (user.cooldown_reducer_until and user.cooldown_reducer_until > now) and user.pet == 'кайот':
-    cooldown = timedelta(hours=6)
-
-if user.last_hunt and now - user.last_hunt < cooldown:
-            remaining = timedelta(days=1) - (now - user.last_hunt)
+        
+        # Расчет кулдауна охоты
+        cooldown = timedelta(days=1)
+        
+        if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
+            cooldown = timedelta(hours=12)
+        
+        if user.pet == 'кайот':
+            cooldown = timedelta(hours=12)
+        
+        if (user.cooldown_reducer_until and user.cooldown_reducer_until > now) and user.pet == 'кайот':
+            cooldown = timedelta(hours=6)
+        
+        if user.last_hunt and now - user.last_hunt < cooldown:
+            remaining = cooldown - (now - user.last_hunt)
             hours = remaining.seconds // 3600
             minutes = (remaining.seconds % 3600) // 60
             await update.message.reply_text(f"⏰ *Следующая охота через {hours}ч {minutes}мин.*", parse_mode='Markdown')
             return
         
+        # Определение оружия и шансов
         if user.has_rifle:
             weapon = "🔫 *Снайперская винтовка*"
-            chances = [40, 30, 20, 10]
+            chances = [40, 30, 20, 10]  # 40% / 30% / 20% / 10%
         elif user.has_harpoon:
             weapon = "🎣 *Гарпун*"
-            chances = [70, 20, 9, 1]
+            chances = [70, 20, 9, 1]    # 70% / 20% / 9% / 1%
         else:
-            weapon = "🗡️ *Обычное Оружие*"
-            chances = [89, 10, 0.99, 0.01]
+            weapon = "🗡️ *Обычное оружие*"
+            chances = [89, 10, 0.99, 0.01]  # 89% / 10% / 0.99% / 0.01%
         
+        # Награды
         roll = random.random() * 100
         if roll < chances[0]:
             reward = 10
             target_name = "🧬 *Мутант 1 уровня*"
             target_desc = "слабый, но опасный мутант"
         elif roll < chances[0] + chances[1]:
-            reward = 50
+            reward = 30
             target_name = "🧪 *Мутант 2 уровня*"
             target_desc = "крепкий и агрессивный хищник"
         elif roll < chances[0] + chances[1] + chances[2]:
@@ -666,9 +670,9 @@ if user.last_hunt and now - user.last_hunt < cooldown:
         user.mutants_killed += 1
         survived = True
         death_msg = ""
-        medkit_used = False
         
-        if reward == 100:
+        # Выживание на боссе
+        if reward == 1000:
             survive_chance = calculate_survive_chance(user)
             if random.random() * 100 > survive_chance:
                 survived = False
@@ -698,20 +702,23 @@ if user.last_hunt and now - user.last_hunt < cooldown:
         check_achievements(user, session)
         session.commit()
         
+        # Формирование сообщения
         if survived:
-            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n*Вы победили!*\n\n💰 *Награда:* +{reward} ☣️ РадФрагментов!{death_msg}\n\n⏰ *Следующая охота через 24 часа.*"
+            hours = cooldown.seconds // 3600
+            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n*Вы победили!*\n\n💰 *Награда:* +{reward} ☣️ РадФрагментов!{death_msg}\n\n⏰ *Следующая охота через {hours} часов.*"
         else:
             msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n{death_msg}"
         
         await update.message.reply_text(msg, parse_mode='Markdown')
         
         if user.notifications_enabled:
-            next_hunt_time = now + timedelta(hours=6)
-            schedule_notification(user.user_id, context.bot, 'hunt', next_hunt_time)
+            schedule_notification(user.user_id, context.bot, 'hunt', now + cooldown)
+    
     except Exception as e:
         logger.error(f"Error in hunt: {e}")
         session.rollback()
-        await update.message.reply_text("❌ Ошибка.")
+        await update.message.reply_text("❌ Ошибка при выполнении охоты.")
+    
     finally:
         Session.remove()
 
