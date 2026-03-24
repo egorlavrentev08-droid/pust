@@ -611,11 +611,22 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         phase = context.bot_data.get('phase', 1)
         if phase < 2:
-            await update.message.reply_text("❌ *Охота недоступна!* /phase 2", parse_mode='Markdown')
+            await update.message.reply_text("❌ *Охота Доступна только на второй фазе! ", parse_mode='Markdown')
             return
         
         now = datetime.now()
-        if user.last_hunt and now - user.last_hunt < timedelta(days=1):
+cooldown = timedelta(days=1)
+
+if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
+    cooldown = timedelta(hours=12)
+
+if user.pet == 'кайот':
+    cooldown = timedelta(hours=12)
+
+if (user.cooldown_reducer_until and user.cooldown_reducer_until > now) and user.pet == 'кайот':
+    cooldown = timedelta(hours=6)
+
+if user.last_hunt and now - user.last_hunt < cooldown:
             remaining = timedelta(days=1) - (now - user.last_hunt)
             hours = remaining.seconds // 3600
             minutes = (remaining.seconds % 3600) // 60
