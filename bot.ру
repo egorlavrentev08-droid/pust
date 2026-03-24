@@ -193,6 +193,11 @@ class User(Base):
     last_seen = Column(DateTime, default=datetime.now)
     notifications_enabled = Column(Boolean, default=False)
     teressa = Column(Boolean, default=False)
+    # Сундуки
+    chest_common = Column(Integer, default=0)
+    chest_rare = Column(Integer, default=0)
+    chest_epic = Column(Integer, default=0)
+    chest_legendary = Column(Integer, default=0)
 
 class Clan(Base):
     __tablename__ = 'clans'
@@ -404,6 +409,309 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in top_command: {e}")
         await update.message.reply_text("❌ Ошибка при загрузке таблицы")
+    finally:
+        Session.remove()
+
+async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Управление сундуками"""
+    if not context.args:
+        await update.message.reply_text(
+            "🎁 *Сундуки Пустоши*\n\n"
+            "Команды:\n"
+            "`/chest list` — список сундуков\n"
+            "`/chest chance` — шансы выпадения\n"
+            "`/chest open common` — открыть обычный сундук\n"
+            "`/chest open rare` — открыть редкий\n"
+            "`/chest open epic` — открыть эпический\n"
+            "`/chest open leg` — открыть легендарный",
+            parse_mode='Markdown'
+        )
+        return
+    
+    action = context.args[0].lower()
+    
+    if action == 'list':
+        await chest_list(update, context)
+    elif action == 'chance':
+        await chest_chance(update, context)
+    elif action == 'open':
+        if len(context.args) < 2:
+            await update.message.reply_text("❌ /chest open [common/rare/epic/leg]")
+            return
+        chest_type = context.args[1].lower()
+        await chest_open(update, context, chest_type)
+    else:
+        await update.message.reply_text("❌ Неизвестная команда")
+
+async def chest_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать список сундуков игрока"""
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ Сначала /start")
+            return
+        
+        text = (
+            "🎁 *Ваши сундуки*\n\n"
+            f"🟢 Обычные: {user.chest_common}\n"
+            f"🔵 Редкие: {user.chest_rare}\n"
+            f"🟣 Эпические: {user.chest_epic}\n"
+            f"🟠 Легендарные: {user.chest_legendary}\n\n"
+            "💡 Открыть: `/chest open [тип]`"
+        )
+        await update.message.reply_text(text, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in chest_list: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+async def chest_chance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать шансы выпадения предметов"""
+    text = (
+        "🎲 *Шансы выпадения в сундуках*\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "*🟢 ОБЫЧНЫЙ СУНДУК* (2 предмета)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "• RC: 100-500\n"
+        "• RF: 2-10\n"
+        "• 💊 Аптечка обычная\n"
+        "• 🔎 Металлоискатель\n"
+        "• 🛡️ Щит\n"
+        "• 🎭 Камуфляж\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "*🔵 РЕДКИЙ СУНДУК* (3 предмета)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "• RC: 500-1000\n"
+        "• RF: 10-50\n"
+        "• 🎣 Гарпун\n"
+        "• 🥉 Броня 1\n"
+        "• 💊 Аптечка усиленная (1-3 шт)\n"
+        "• 🎭 Камуфляж\n"
+        "• 🛡️ Щит\n"
+        "• ⚡ Энергетик\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "*🟣 ЭПИЧЕСКИЙ СУНДУК* (4 предмета)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "• RC: 1000-2500\n"
+        "• RF: 50-250\n"
+        "• 🥈 Броня 2\n"
+        "• 🎣 Гарпун\n"
+        "• 🔎 Металлоискатель\n"
+        "• 💊 Аптечка про (1-3 шт)\n"
+        "• ⚡ Энергетик\n"
+        "• ⏱️ Редуктор\n"
+        "• 🟢 Обычный сундук\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "*🟠 ЛЕГЕНДАРНЫЙ СУНДУК* (4 предмета)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "• 🥇 Броня 3\n"
+        "• 🔫 Винтовка\n"
+        "• 💊 Аптечка легендарная (1-3 шт)\n"
+        "• ⏱️ Редуктор\n"
+        "• 🐾 Случайный питомец (0.5%)\n"
+        "• 🔵 Редкий сундук\n"
+        "• 🎣 Гарпун\n"
+        "• ✨ *Тересса* (шанс 0.0001% — 1 на миллион!)\n\n"
+        "💡 *Совет:* легендарные сундуки — редкость. Береги их!"
+    )
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_type: str):
+    """Открыть сундук"""
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ Сначала /start")
+            return
+        
+        chest_name = ""
+        chest_count = 0
+        
+        if chest_type == 'common':
+            chest_name = "🟢 Обычный сундук"
+            chest_count = user.chest_common
+        elif chest_type == 'rare':
+            chest_name = "🔵 Редкий сундук"
+            chest_count = user.chest_rare
+        elif chest_type == 'epic':
+            chest_name = "🟣 Эпический сундук"
+            chest_count = user.chest_epic
+        elif chest_type == 'leg':
+            chest_name = "🟠 Легендарный сундук"
+            chest_count = user.chest_legendary
+        else:
+            await update.message.reply_text("❌ Тип: common, rare, epic, leg")
+            return
+        
+        if chest_count <= 0:
+            await update.message.reply_text(f"❌ У вас нет {chest_name}!")
+            return
+        
+        # Уменьшаем количество
+        if chest_type == 'common':
+            user.chest_common -= 1
+        elif chest_type == 'rare':
+            user.chest_rare -= 1
+        elif chest_type == 'epic':
+            user.chest_epic -= 1
+        elif chest_type == 'leg':
+            user.chest_legendary -= 1
+        
+        # Открываем сундук
+        rewards = []
+        
+        if chest_type == 'common':
+            # 2 предмета
+            items = ['rc', 'rf', 'medkit_common', 'detector', 'shield', 'camouflage']
+            for _ in range(2):
+                reward = random.choice(items)
+                if reward == 'rc':
+                    amount = random.randint(100, 500)
+                    user.radcoins += amount
+                    rewards.append(f"☢️ {amount} RC")
+                elif reward == 'rf':
+                    amount = random.randint(2, 10)
+                    user.radfragments += amount
+                    rewards.append(f"☣️ {amount} RF")
+                elif reward == 'medkit_common':
+                    user.medkits = min(user.medkits + 1, MAX_MEDKITS)
+                    rewards.append("💊 Обычная аптечка")
+                elif reward == 'detector':
+                    user.detectors += 1
+                    rewards.append("🔎 Металлоискатель")
+                elif reward == 'shield':
+                    user.shield_until = datetime.now() + timedelta(days=7)
+                    rewards.append("🛡️ Щит")
+                elif reward == 'camouflage':
+                    user.camouflage_until = datetime.now() + timedelta(days=7)
+                    rewards.append("🎭 Камуфляж")
+        
+        elif chest_type == 'rare':
+            # 3 предмета
+            items = ['rc', 'rf', 'harpoon', 'armor1', 'medkit_enhanced', 'camouflage', 'shield', 'energy']
+            for _ in range(3):
+                reward = random.choice(items)
+                if reward == 'rc':
+                    amount = random.randint(500, 1000)
+                    user.radcoins += amount
+                    rewards.append(f"☢️ {amount} RC")
+                elif reward == 'rf':
+                    amount = random.randint(10, 50)
+                    user.radfragments += amount
+                    rewards.append(f"☣️ {amount} RF")
+                elif reward == 'harpoon':
+                    user.has_harpoon = True
+                    rewards.append("🎣 Гарпун")
+                elif reward == 'armor1':
+                    user.armor_rank = 1
+                    rewards.append("🥉 Броня 1")
+                elif reward == 'medkit_enhanced':
+                    amount = random.randint(1, 3)
+                    user.medkits = min(user.medkits + amount, MAX_MEDKITS)
+                    rewards.append(f"💊 Усиленная аптечка x{amount}")
+                elif reward == 'camouflage':
+                    user.camouflage_until = datetime.now() + timedelta(days=7)
+                    rewards.append("🎭 Камуфляж")
+                elif reward == 'shield':
+                    user.shield_until = datetime.now() + timedelta(days=7)
+                    rewards.append("🛡️ Щит")
+                elif reward == 'energy':
+                    user.energy_drink_until = datetime.now() + timedelta(days=1)
+                    rewards.append("⚡ Энергетик")
+        
+        elif chest_type == 'epic':
+            # 4 предмета
+            items = ['rc', 'rf', 'armor2', 'harpoon', 'detector', 'medkit_pro', 'energy', 'reducer', 'chest_common']
+            for _ in range(4):
+                reward = random.choice(items)
+                if reward == 'rc':
+                    amount = random.randint(1000, 2500)
+                    user.radcoins += amount
+                    rewards.append(f"☢️ {amount} RC")
+                elif reward == 'rf':
+                    amount = random.randint(50, 250)
+                    user.radfragments += amount
+                    rewards.append(f"☣️ {amount} RF")
+                elif reward == 'armor2':
+                    user.armor_rank = 2
+                    rewards.append("🥈 Броня 2")
+                elif reward == 'harpoon':
+                    user.has_harpoon = True
+                    rewards.append("🎣 Гарпун")
+                elif reward == 'detector':
+                    user.detectors += 1
+                    rewards.append("🔎 Металлоискатель")
+                elif reward == 'medkit_pro':
+                    amount = random.randint(1, 3)
+                    user.medkits = min(user.medkits + amount, MAX_MEDKITS)
+                    rewards.append(f"💊 Профессиональная аптечка x{amount}")
+                elif reward == 'energy':
+                    user.energy_drink_until = datetime.now() + timedelta(days=1)
+                    rewards.append("⚡ Энергетик")
+                elif reward == 'reducer':
+                    user.cooldown_reducer_until = datetime.now() + timedelta(days=3)
+                    rewards.append("⏱️ Редуктор")
+                elif reward == 'chest_common':
+                    user.chest_common += 1
+                    rewards.append("🟢 Обычный сундук")
+        
+        elif chest_type == 'leg':
+            # 4 предмета
+            items = ['armor3', 'rifle', 'medkit_legendary', 'reducer', 'pet', 'chest_rare', 'harpoon', 'teressa']
+            for _ in range(4):
+                reward = random.choice(items)
+                if reward == 'armor3':
+                    user.armor_rank = 3
+                    rewards.append("🥇 Броня 3")
+                elif reward == 'rifle':
+                    user.has_rifle = True
+                    rewards.append("🔫 Винтовка")
+                elif reward == 'medkit_legendary':
+                    amount = random.randint(1, 3)
+                    user.medkits = min(user.medkits + amount, MAX_MEDKITS)
+                    rewards.append(f"💊 Легендарная аптечка x{amount}")
+                elif reward == 'reducer':
+                    user.cooldown_reducer_until = datetime.now() + timedelta(days=3)
+                    rewards.append("⏱️ Редуктор")
+                elif reward == 'pet':
+                    # Шансы такие же как при сборе
+                    if random.random() < 0.005:  # 0.5%
+                        pets = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
+                        weights = [1, 1, 1, 1, 1, 1, 1, 0.5]
+                        pet = random.choices(pets, weights=weights)[0]
+                        user.pet = pet
+                        rewards.append(f"🐾 Питомец: {pet}")
+                    else:
+                        rewards.append("❌ Питомец не выпал")
+                elif reward == 'chest_rare':
+                    user.chest_rare += 1
+                    rewards.append("🔵 Редкий сундук")
+                elif reward == 'harpoon':
+                    user.has_harpoon = True
+                    rewards.append("🎣 Гарпун")
+                elif reward == 'teressa':
+                    if random.random() < 0.000001:  # 0.0001% = 1 на миллион
+                        user.teressa = True
+                        rewards.append("✨ *ТЕРЕССА!* Бессмертие!")
+                    else:
+                        rewards.append("❌ Тересса не выпала")
+        
+        session.commit()
+        
+        # Формируем сообщение
+        text = f"🎁 *Вы открыли {chest_name}!*\n\n📦 *Находки:*\n"
+        for r in rewards:
+            text += f"• {r}\n"
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in chest_open: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка при открытии сундука")
     finally:
         Session.remove()
 
@@ -1023,6 +1331,23 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pet_encounter = random.choices(pets, weights=weights)[0]
         
         new_achievements = check_achievements(user, session)
+
+        # ==================== ВЫПАДЕНИЕ СУНДУКОВ ====================
+        chest_found = None
+        if phase >= 2:
+        chest_roll = random.random() * 100
+        if chest_roll < 0.09:
+        user.chest_legendary += 1
+        chest_found = "🟠 Легендарный сундук"
+        elif chest_roll < 0.39:
+        user.chest_epic += 1
+        chest_found = "🟣 Эпический сундук"
+    elif chest_roll < 3.39:
+        user.chest_rare += 1
+        chest_found = "🔵 Редкий сундук"
+    elif chest_roll < 11.39:
+        user.chest_common += 1
+        chest_found = "🟢 Обычный сундук"
         
         session.commit()
         
@@ -1064,6 +1389,9 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         next_hours = interval // 60
         next_minutes = interval % 60
         msg += f"\n\n⏰ *Пустошь восстановится через {next_hours}ч {next_minutes}мин.*"
+
+        if chest_found:
+    msg += f"\n\n🎁 *Вы нашли {chest_found}!*\nИспользуйте `/chest list` чтобы посмотреть сундуки."
         
         await update.message.reply_text(msg, parse_mode='Markdown')
         
@@ -2399,6 +2727,7 @@ def main():
     app.add_handler(CommandHandler("advice", advice_handler))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("hide", admin_hide))
+    app.add_handler(CommandHandler("chest", chest_command))
     # Добавляем автобэкап каждый час
     scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
