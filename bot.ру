@@ -276,18 +276,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/pet accept — приручить\n"
         "/pet deny — отказаться\n"
         "/pet bye — отпустить\n\n"
-        "👑 *Админ-команды:*\n"
-        "/givemeplsadmin [код] — получить админку\n"
-        "/phase 1/2/3 — сменить фазу\n"
-        "/give @ник [сумма] {RC,RF,RCr}\n"
-        "/take @ник [сумма] {RC,RF,RCr}\n"
-        "/setlevel @ник [уровень]\n"
-        "/reset @ник\n"
-        "/cd @ник [минуты]\n"
-        "/resethunt @ник — сброс кд охоты\n"
-        "/item give/take @ник [предмет] [кол-во]\n"
-        "/pets give/take @ник [питомец]\n"
-        "/players — список игроков"
     )
     await send_to_private(update, context, text)
 
@@ -1912,7 +1900,7 @@ def main():
     app.add_handler(CommandHandler("pets", admin_pets))  # админ-команда для питомцев
     
     scheduler.start()
-    logger.info("🌟 RadCoin Bot запущен!")
+    logger.info("🌟 RadCoin Bot запущен! Используйте /collect")
     app.run_polling()
 
 if __name__ == '__main__':
