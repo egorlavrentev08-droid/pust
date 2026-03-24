@@ -441,10 +441,10 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phase = context.bot_data.get('phase', 1)
         if phase >= 3:
             anomaly_roll = random.random()
-            if anomaly_roll < 0.01:
+            if anomaly_roll < 0.1:
                 base_rc = int(base_rc * 1.3)
                 anomaly_msg = "\n✨ *Аномалия ДОБЫТЧИК:* +30%! ✨"
-            elif anomaly_roll < 0.02:
+            elif anomaly_roll < 0.2:
                 reduction = random.randint(1, 5)
                 actual_level = max(1, actual_level - reduction)
                 anomaly_msg = f"\n🧠 *Аномалия СКЛЕРОЗИК:* -{reduction} уровня!"
@@ -537,9 +537,9 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         pet_encounter = None
         if phase >= 2 and user.level >= 2:
-            if random.random() < 0.0001:
+            if random.random() < 0.005:
                 pets = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
-                weights = [1, 1, 1, 1, 1, 1, 1, 0.5]
+                weights = [1, 1, 1, 1, 1, 1, 1, 0.3]
                 pet_encounter = random.choices(pets, weights=weights)[0]
         
         new_achievements = check_achievements(user, session)
