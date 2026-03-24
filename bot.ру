@@ -317,6 +317,143 @@ def calculate_survive_chance(user):
         base_chance = min(100, base_chance + 25)
     return base_chance
 
+async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Таблица лидеров"""
+    if not context.args:
+        await update.message.reply_text(
+            "🏆 *Таблица лидеров*\n\n"
+            "Выбери категорию:\n"
+            "`/top level` — по уровню\n"
+            "`/top rc` — по РадКоинами\n"
+            "`/top boss` — по убитым Боссам\n"
+            "`/top hunt` — по убитым мутантам\n"
+            "`/top clan` — по кланам",
+            parse_mode='Markdown'
+        )
+        return
+    
+    category = context.args[0].lower()
+    session = Session()
+    
+    try:
+        # Исключаем админов (is_admin_visible = False)
+        if category == 'level':
+            users = session.query(User).filter(User.is_admin_visible == True).order_by(User.level.desc()).limit(10).all()
+            title = "🏆 *Топ-10 по уровню*"
+            value_field = "уровень"
+        elif category == 'rc':
+            users = session.query(User).filter(User.is_admin_visible == True).order_by(User.radcoins.desc()).limit(10).all()
+            title = "💰 *Топ-10 по РадКоинами*"
+            value_field = "RC"
+        elif category == 'boss':
+            users = session.query(User).filter(User.is_admin_visible == True).order_by(User.bosses_killed.desc()).limit(10).all()
+            title = "👑 *Топ-10 по убитым Боссам*"
+            value_field = "Боссов"
+        elif category == 'hunt':
+            users = session.query(User).filter(User.is_admin_visible == True).order_by(User.mutants_killed.desc()).limit(10).all()
+            title = "🧬 *Топ-10 по убитым мутантам*"
+            value_field = "мутантов"
+        elif category == 'clan':
+            # Топ кланов по количеству участников
+            clans = session.query(Clan).all()
+            clan_stats = []
+            for clan in clans:
+                members_count = session.query(User).filter_by(clan_id=clan.id).count()
+                clan_stats.append((clan.name, members_count))
+            clan_stats.sort(key=lambda x: x[1], reverse=True)
+            clan_stats = clan_stats[:10]
+            
+            if not clan_stats:
+                await update.message.reply_text("📋 *Нет кланов*", parse_mode='Markdown')
+                return
+            
+            text = "🏰 *Топ-10 кланов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            for i, (name, count) in enumerate(clan_stats, 1):
+                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+                text += f"{medal} *{name}* — 👥 {count}\n"
+            
+            await update.message.reply_text(text, parse_mode='Markdown')
+            return
+        else:
+            await update.message.reply_text("❌ Используй: level, rc, boss, hunt, clan", parse_mode='Markdown')
+            return
+        
+        if not users:
+            await update.message.reply_text("📋 *Нет игроков*", parse_mode='Markdown')
+            return
+        
+        text = f"{title}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        for i, user in enumerate(users, 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            
+            if category == 'level':
+                value = user.level
+            elif category == 'rc':
+                value = f"{user.radcoins:.0f}"
+            elif category == 'boss':
+                value = user.bosses_killed
+            elif category == 'hunt':
+                value = user.mutants_killed
+            else:
+                value = ""
+            
+            text += f"{medal} *{user.username or f'ID:{user.user_id}'}* — {value} {value_field}\n"
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in top_command: {e}")
+        await update.message.reply_text("❌ Ошибка при загрузке таблицы")
+    finally:
+        Session.remove()
+
+async def admin_hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Скрыть/показать админа в топе"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text(
+            "❌ Использование:\n"
+            "`/hide @ник` — скрыть в топе\n"
+            "`/show @ник` — показать в топе",
+            parse_mode='Markdown'
+        )
+        return
+    
+    action = context.args[0].lower()
+    username = context.args[1].lstrip('@') if len(context.args) > 1 else None
+    
+    if not username:
+        await update.message.reply_text("❌ Укажи пользователя: `/hide @ник`", parse_mode='Markdown')
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(username=username).first()
+        if not user:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        if action == 'hide':
+            user.is_admin_visible = False
+            session.commit()
+            await update.message.reply_text(f"✅ *@{username} скрыт из топов*", parse_mode='Markdown')
+        elif action == 'show':
+            user.is_admin_visible = True
+            session.commit()
+            await update.message.reply_text(f"✅ *@{username} снова виден в топах*", parse_mode='Markdown')
+        else:
+            await update.message.reply_text("❌ Используй hide или show")
+            
+    except Exception as e:
+        logger.error(f"Error in admin_hide: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
 async def advice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Главное меню советов"""
     text = (
@@ -2260,6 +2397,8 @@ def main():
     app.add_handler(CommandHandler("backup_now", backup_now))
     app.add_handler(CommandHandler("phase_info", phase_info))
     app.add_handler(CommandHandler("advice", advice_handler))
+    app.add_handler(CommandHandler("top", top_command))
+    app.add_handler(CommandHandler("hide", admin_hide))
     # Добавляем автобэкап каждый час
     scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
