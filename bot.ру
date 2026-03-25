@@ -513,6 +513,8 @@ async def chest_chance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 🐾 Случайный питомец (0.5%)\n"
         "• 🔵 Редкий сундук\n"
         "• 🎣 Гарпун\n"
+        "• ☢️ RC (2500-10000)\n"
+        "• ☣️ RF (250-1000)\n"
         "• ✨ *Тересса* (шанс 0.0001% — 1 на миллион!)\n\n"
         "💡 *Совет:* легендарные сундуки — редкость. Береги их!"
     )
@@ -560,7 +562,6 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
         elif chest_type == 'leg':
             user.chest_legendary -= 1
         
-        # Открываем сундук
         rewards = []
         
         if chest_type == 'common':
@@ -660,10 +661,18 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
         
         elif chest_type == 'leg':
             # 4 предмета
-            items = ['armor3', 'rifle', 'medkit_legendary', 'reducer', 'pet', 'chest_rare', 'harpoon', 'teressa']
+            items = ['rc', 'rf', 'armor3', 'rifle', 'medkit_legendary', 'reducer', 'pet', 'chest_rare', 'harpoon', 'teressa']
             for _ in range(4):
                 reward = random.choice(items)
-                if reward == 'armor3':
+                if reward == 'rc':
+                    amount = random.randint(2500, 10000)
+                    user.radcoins += amount
+                    rewards.append(f"☢️ {amount} RC")
+                elif reward == 'rf':
+                    amount = random.randint(250, 1000)
+                    user.radfragments += amount
+                    rewards.append(f"☣️ {amount} RF")
+                elif reward == 'armor3':
                     user.armor_rank = 3
                     rewards.append("🥇 Броня 3")
                 elif reward == 'rifle':
@@ -677,7 +686,6 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                     user.cooldown_reducer_until = datetime.now() + timedelta(days=3)
                     rewards.append("⏱️ Редуктор")
                 elif reward == 'pet':
-                    # Шансы такие же как при сборе
                     if random.random() < 0.005:  # 0.5%
                         pets = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
                         weights = [1, 1, 1, 1, 1, 1, 1, 0.5]
