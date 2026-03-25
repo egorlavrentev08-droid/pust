@@ -715,6 +715,87 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
     finally:
         Session.remove()
 
+async def admin_chest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выдать сундуки игроку (админ)"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "🎁 *Выдача сундуков*\n\n"
+            "Использование:\n"
+            "`/chest give @ник [тип] [количество]`\n\n"
+            "Типы сундуков:\n"
+            "• `common` — обычный\n"
+            "• `rare` — редкий\n"
+            "• `epic` — эпический\n"
+            "• `legendary` — легендарный\n\n"
+            "Пример:\n"
+            "`/chest give @Творец legendary 1`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    action = context.args[0].lower()
+    username = context.args[1].lstrip('@')
+    chest_type = context.args[2].lower()
+    count = 1
+    if len(context.args) > 3:
+        try:
+            count = int(context.args[3])
+            if count <= 0 or count > 100:
+                await update.message.reply_text("❌ Количество от 1 до 100")
+                return
+        except ValueError:
+            await update.message.reply_text("❌ Введите число")
+            return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(username=username).first()
+        if not user:
+            await update.message.reply_text(f"❌ Пользователь @{username} не найден!")
+            return
+        
+        chest_names = {
+            'common': 'chest_common',
+            'rare': 'chest_rare',
+            'epic': 'chest_epic',
+            'legendary': 'chest_legendary'
+        }
+        
+        if chest_type not in chest_names:
+            await update.message.reply_text("❌ Тип: common, rare, epic, legendary")
+            return
+        
+        chest_field = chest_names[chest_type]
+        current = getattr(user, chest_field)
+        setattr(user, chest_field, current + count)
+        
+        chest_emoji = {
+            'common': '🟢',
+            'rare': '🔵',
+            'epic': '🟣',
+            'legendary': '🟠'
+        }
+        
+        session.commit()
+        
+        await update.message.reply_text(
+            f"✅ *Выдано {count} {chest_emoji[chest_type]} {chest_type} сундуков*\n"
+            f"📦 Пользователь: @{username}\n"
+            f"🎁 Теперь у него: {getattr(user, chest_field)} шт.",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in admin_chest: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка при выдаче сундуков")
+    finally:
+        Session.remove()
+
 async def admin_hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Скрыть/показать админа в топе"""
     if not await is_admin(update, context):
@@ -2732,6 +2813,7 @@ def main():
     app.add_handler(CommandHandler("advice", advice_handler))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("hide", admin_hide))
+    app.add_handler(CommandHandler("chest", admin_chest))
     app.add_handler(CommandHandler("chest", chest_command))
     # Добавляем автобэкап каждый час
     scheduler.add_job(auto_backup, 'interval', hours=1)
