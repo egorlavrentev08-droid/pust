@@ -715,35 +715,34 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
     finally:
         Session.remove()
 
-async def admin_chest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выдать сундуки игроку (админ)"""
+async def gchest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Админ-команда для выдачи сундуков: /gchest @ник тип кол-во"""
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
         return
     
-    if len(context.args) < 3:
+    if len(context.args) < 2:
         await update.message.reply_text(
-            "🎁 *Выдача сундуков*\n\n"
+            "🎁 *Выдача сундуков (админ)*\n\n"
             "Использование:\n"
-            "`/chest give @ник [тип] [количество]`\n\n"
-            "Типы сундуков:\n"
+            "`/gchest @ник [тип] [количество]`\n\n"
+            "Типы:\n"
             "• `common` — обычный\n"
             "• `rare` — редкий\n"
             "• `epic` — эпический\n"
             "• `legendary` — легендарный\n\n"
             "Пример:\n"
-            "`/chest give @Творец legendary 1`",
+            "`/gchest @Творец legendary 1`",
             parse_mode='Markdown'
         )
         return
     
-    action = context.args[0].lower()
-    username = context.args[1].lstrip('@')
-    chest_type = context.args[2].lower()
+    username = context.args[0].lstrip('@')
+    chest_type = context.args[1].lower()
     count = 1
-    if len(context.args) > 3:
+    if len(context.args) > 2:
         try:
-            count = int(context.args[3])
+            count = int(context.args[2])
             if count <= 0 or count > 100:
                 await update.message.reply_text("❌ Количество от 1 до 100")
                 return
@@ -790,7 +789,7 @@ async def admin_chest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     except Exception as e:
-        logger.error(f"Error in admin_chest: {e}")
+        logger.error(f"Error in gchest: {e}")
         session.rollback()
         await update.message.reply_text("❌ Ошибка при выдаче сундуков")
     finally:
@@ -2813,7 +2812,7 @@ def main():
     app.add_handler(CommandHandler("advice", advice_handler))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("hide", admin_hide))
-    app.add_handler(CommandHandler("chest", admin_chest))
+    app.add_handler(CommandHandler("gchest", gchest))
     app.add_handler(CommandHandler("chest", chest_command))
     # Добавляем автобэкап каждый час
     scheduler.add_job(auto_backup, 'interval', hours=1)
