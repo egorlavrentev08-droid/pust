@@ -2318,6 +2318,46 @@ async def clan_invite_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Session.remove()
 
 # ==================== АДМИН-КОМАНДЫ ====================
+async def admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать список администраторов"""
+    session = Session()
+    try:
+        # Получаем пользователей с правами админа из ADMIN_IDS
+        admin_users = []
+        for admin_id in ADMIN_IDS:
+            user = session.query(User).filter_by(user_id=admin_id).first()
+            if user:
+                admin_users.append(user)
+        
+        if not admin_users:
+            await update.message.reply_text("📋 *Нет активных администраторов*", parse_mode='Markdown')
+            return
+        
+        text = "👑 *Администраторы Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for i, admin in enumerate(admin_users, 1):
+            medal = "👑" if i == 1 else "⭐"
+            text += f"{medal} *{admin.username or f'ID:{admin.user_id}'}*\n"
+            text += f"   📊 Уровень: {admin.level}\n"
+            text += f"   ☢️ RC: {admin.radcoins:.0f}\n"
+            text += f"   🏆 Роль: Администратор\n\n"
+        
+        text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        text += "💡 *Администраторы могут:*\n"
+        text += "• Выдавать/забирать ресурсы\n"
+        text += "• Менять фазу Пустоши\n"
+        text += "• Управлять игроками\n"
+        text += "• Создавать бэкапы\n"
+        text += "• Выдавать сундуки и питомцы"
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in admins: {e}")
+        await update.message.reply_text("❌ Ошибка при загрузке списка администраторов")
+    finally:
+        Session.remove()
+
 async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("❌ /givemeplsadmin [код]")
@@ -2822,6 +2862,7 @@ def main():
     app.add_handler(CommandHandler("hide", admin_hide))
     app.add_handler(CommandHandler("gchest", gchest))
     app.add_handler(CommandHandler("chest", chest_command))
+    app.add_handler(CommandHandler("admins", admins))
     # Добавляем автобэкап каждый час
     scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
