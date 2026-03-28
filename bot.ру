@@ -138,7 +138,6 @@ async def backup_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== НАСТРОЙКИ ====================
 TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'
 ADMIN_CODE = os.getenv('ADMIN_CODE', '281488991529')
-ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '281488991').split(',')]
 # Главный администратор (не может быть заблокирован)
 SUPER_ADMIN_IDS = [6595788533]
 # Обычные администраторы (будут добавляться через /admin add)
