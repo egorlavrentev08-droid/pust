@@ -797,13 +797,13 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"⏰ *Следующая охота через {hours}ч {minutes}мин.*", parse_mode='Markdown')
             return
         
-        # Определение оружия и шансов (приоритет: Гаусса > винтовка > гарпун > ружьё > обрез)
+        # Определение оружия и шансов (приоритет: Гаусс > винтовка > гарпун > ружьё > обрез)
         weapon_name = "🗡️ Обрез"
         weapon = user.weapon
         chances = [89, 10, 0.99, 0.01]
         
         if weapon == 'gauss':
-            weapon_name = "⚡ Винтовка Гаусса"
+            weapon_name = "⚡ Гаусс"
             chances = [40, 25, 20, 15]
         elif weapon == 'rifle':
             weapon_name = "🔫 Винтовка"
