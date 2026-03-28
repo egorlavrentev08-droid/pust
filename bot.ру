@@ -2821,6 +2821,120 @@ async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+async def call(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправить сообщение всем зарегистрированным игрокам"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "📢 *Рассылка сообщения*\n\n"
+            "Использование:\n"
+            "`/call [текст]` — отправить сообщение всем игрокам\n\n"
+            "Пример:\n"
+            "`/call Всем по винтовке!`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    admin_name = update.effective_user.first_name
+    message_text = ' '.join(context.args)
+    
+    session = Session()
+    try:
+        # Получаем всех зарегистрированных пользователей
+        users = session.query(User).all()
+        
+        if not users:
+            await update.message.reply_text("📋 *Нет зарегистрированных игроков*", parse_mode='Markdown')
+            return
+        
+        sent = 0
+        failed = 0
+        
+        for user in users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=f"📢 *Объявление от администратора*\n\n"
+                         f"{message_text}\n\n"
+                         f"👑 Администратор: {admin_name}",
+                    parse_mode='Markdown'
+                )
+                sent += 1
+            except Exception as e:
+                failed += 1
+                logger.error(f"Не удалось отправить сообщение @{user.username}: {e}")
+        
+        await update.message.reply_text(
+            f"✅ *Рассылка завершена!*\n\n"
+            f"📨 Отправлено: {sent}\n"
+            f"❌ Не доставлено: {failed}\n"
+            f"📝 Сообщение: {message_text}",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in call: {e}")
+        await update.message.reply_text("❌ Ошибка при отправке рассылки")
+    finally:
+        Session.remove()
+
+async def lscall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправить личное сообщение игроку"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "📨 *Личное сообщение игроку*\n\n"
+            "Использование:\n"
+            "`/lscall @ник [текст]` — отправить сообщение игроку\n\n"
+            "Пример:\n"
+            "`/lscall @Творец Держи винтовку!`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    username = context.args[0].lstrip('@')
+    message_text = ' '.join(context.args[1:])
+    admin_name = update.effective_user.first_name
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(username=username).first()
+        if not user:
+            await update.message.reply_text(f"❌ Пользователь @{username} не найден в базе!")
+            return
+        
+        try:
+            await context.bot.send_message(
+                chat_id=user.user_id,
+                text=f"📨 *Личное сообщение от администратора*\n\n"
+                     f"{message_text}\n\n"
+                     f"👑 Администратор: {admin_name}",
+                parse_mode='Markdown'
+            )
+            
+            await update.message.reply_text(
+                f"✅ *Сообщение отправлено!*\n\n"
+                f"📨 Получатель: @{username}\n"
+                f"📝 Текст: {message_text}",
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Не удалось отправить сообщение @{username}: {e}")
+            await update.message.reply_text(f"❌ Не удалось отправить сообщение @{username}. Возможно, игрок заблокировал бота.")
+        
+    except Exception as e:
+        logger.error(f"Error in lscall: {e}")
+        await update.message.reply_text("❌ Ошибка при отправке сообщения")
+    finally:
+        Session.remove()
+
 # ==================== ЗАПУСК ====================
 def main():
     app = Application.builder().token(TOKEN).build()
@@ -2863,6 +2977,8 @@ def main():
     app.add_handler(CommandHandler("gchest", gchest))
     app.add_handler(CommandHandler("chest", chest_command))
     app.add_handler(CommandHandler("admins", admins))
+    app.add_handler(CommandHandler("call", call))
+    app.add_handler(CommandHandler("lscall", lscall))
     # Добавляем автобэкап каждый час
     scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
