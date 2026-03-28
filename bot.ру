@@ -1080,16 +1080,50 @@ def schedule_notification(user_id, bot, notify_type, run_date):
 
 # ==================== ОСНОВНЫЕ КОМАНДЫ ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /start с бонусом новичкам"""
     user = update.effective_user
-    get_user(user.id, user.username)
-    await update.message.reply_text(
-        "🌟 *Добро пожаловать в RadCoin Bot!*\n\n"
-        "Вы попали в опасный мир Пустоши, где каждый шаг может стать последним.\n\n"
-        "💰 *Валюта:* РадКоины (RC)\n"
-        "☣️ *РадФрагменты (RF)* — для крафта и обмена\n\n"
-        "Используйте /help для списка команд.",
-        parse_mode='Markdown'
-    )
+    session = Session()
+    try:
+        db_user = session.query(User).filter_by(user_id=user.id).first()
+        is_new = False
+        
+        if not db_user:
+            db_user = User(user_id=user.id, username=user.username)
+            session.add(db_user)
+            is_new = True
+        elif username and db_user.username != user.username:
+            db_user.username = user.username
+        
+        session.commit()
+        
+        if is_new:
+            # Выдаём бонус новичку
+            db_user.radcoins += 1000
+            session.commit()
+            
+            await update.message.reply_text(
+                "🌟 *Добро пожаловать в RadCoin Bot!*\n\n"
+                "Вы попали в опасный мир Пустоши, где каждый шаг может стать последним.\n\n"
+                "🎁 *Вам выдан бонус новичка: 1000 РадКоинов!*\n\n"
+                "💰 *Валюта:* РадКоины (RC) — покупайте снаряжение в магазине\n"
+                "☣️ *РадФрагменты (RF)* — для крафта и обмена\n\n"
+                "Используйте /help для списка команд.",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "🌟 *Добро пожаловать в RadCoin Bot!*\n\n"
+                "Вы попали в опасный мир Пустоши, где каждый шаг puede стать последним.\n\n"
+                "💰 *Валюта:* РадКоины (RC) — покупайте снаряжение в магазине\n"
+                "☣️ *РадФрагменты (RF)* — для крафта и обмена\n\n"
+                "Используйте /help для списка команд.",
+                parse_mode='Markdown'
+            )
+    except Exception as e:
+        logger.error(f"Error in start: {e}")
+        await update.message.reply_text("❌ Ошибка при запуске.")
+    finally:
+        Session.remove()
 
 async def phase_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать текущую фазу Пустоши"""
