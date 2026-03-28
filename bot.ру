@@ -140,9 +140,7 @@ TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'
 ADMIN_CODE = os.getenv('ADMIN_CODE', '281488991529')
 # Главный администратор (не может быть заблокирован)
 SUPER_ADMIN_IDS = [6595788533]
-# Обычные администраторы (будут добавляться через /admin add)
-ADMIN_IDS = []  # теперь пустой, админы хранятся в БД
-
+# Обычные администраторы (будут добавляться через /admin add) 
 MAX_LEVEL = 100
 MAX_CLAN_BONUS = 10
 MAX_MEDKITS = 10
