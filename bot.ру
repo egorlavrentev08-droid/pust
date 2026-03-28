@@ -2569,7 +2569,7 @@ async def advice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     await send_to_private(update, context, tips.get(topic, "❌ Неизвестный раздел"))
 
-================== КОМАНДЫ: АДМИНСКИЕ СКРЫТИЕ ====================
+#================== КОМАНДЫ: АДМИНСКИЕ СКРЫТИЕ ====================
 async def admin_hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
