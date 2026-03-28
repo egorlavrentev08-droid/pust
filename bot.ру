@@ -139,6 +139,10 @@ async def backup_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
 TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'
 ADMIN_CODE = os.getenv('ADMIN_CODE', '281488991529')
 ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '281488991').split(',')]
+# Главный администратор (не может быть заблокирован)
+SUPER_ADMIN_IDS = [6595788533]
+# Обычные администраторы (будут добавляться через /admin add)
+ADMIN_IDS = []  # теперь пустой, админы хранятся в БД
 
 MAX_LEVEL = 100
 MAX_CLAN_BONUS = 10
@@ -198,6 +202,8 @@ class User(Base):
     chest_rare = Column(Integer, default=0)
     chest_epic = Column(Integer, default=0)
     chest_legendary = Column(Integer, default=0)
+    is_admin = Column(Boolean, default=False)  # является ли администратором
+    is_blocked = Column(Boolean, default=False)  # заблокирован ли доступ к админке
 
 class Clan(Base):
     __tablename__ = 'clans'
@@ -218,6 +224,27 @@ Session = scoped_session(sessionmaker(bind=engine))
 scheduler = AsyncIOScheduler()
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+def init_super_admin():
+    """Добавляет главного администратора в базу данных"""
+    session = Session()
+    try:
+        for admin_id in SUPER_ADMIN_IDS:
+            user = session.query(User).filter_by(user_id=admin_id).first()
+            if not user:
+                user = User(user_id=admin_id, username=f"admin_{admin_id}")
+                session.add(user)
+            user.is_admin = True
+            user.is_blocked = False
+            session.commit()
+            print(f"✅ Главный администратор {admin_id} добавлен")
+    except Exception as e:
+        print(f"⚠️ Ошибка при добавлении главного админа: {e}")
+    finally:
+        Session.remove()
+
+# В main() в самом начале вызвать:
+init_super_admin()
+
 def get_user(user_id, username=None):
     session = Session()
     try:
@@ -269,12 +296,173 @@ def calculate_experience():
     return random.randint(10, 50)
 
 async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Проверка прав администратора (из БД)"""
     user_id = update.effective_user.id
-    if user_id in ADMIN_IDS:
-        return True
-    if context and context.user_data.get('is_admin'):
-        return True
-    return False
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=user_id).first()
+        if not user:
+            return False
+        # Проверяем, является ли пользователь админом и не заблокирован ли
+        return user.is_admin and not user.is_blocked
+    except Exception as e:
+        logger.error(f"Error checking admin: {e}")
+        return False
+    finally:
+        Session.remove()
+
+async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получение прав администратора по коду"""
+    if not context.args:
+        await update.message.reply_text("❌ /givemeplsadmin [код]")
+        return
+    
+    code = context.args[0]
+    if code != ADMIN_CODE:
+        await update.message.reply_text("❌ *Неверный код!*", parse_mode='Markdown')
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            user = User(user_id=update.effective_user.id, username=update.effective_user.username)
+            session.add(user)
+        
+        user.is_admin = True
+        user.is_blocked = False
+        session.commit()
+        
+        await update.message.reply_text(
+            "✅ *Вы получили права администратора!*\n\n"
+            "Теперь вам доступны команды:\n"
+            "/phase, /give, /take, /setlevel, /reset, /cd, /resethunt, /item, /players, /gchest, /hide, /show, /call, /lscall, /admins",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_giveme: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка!")
+    finally:
+        Session.remove()
+
+async def admin_manage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Управление администраторами (только для главного админа)"""
+    # Проверяем, является ли пользователь главным администратором
+    if update.effective_user.id not in SUPER_ADMIN_IDS:
+        await update.message.reply_text("❌ Только главный администратор может управлять админами!")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "👑 *Управление администраторами*\n\n"
+            "Команды:\n"
+            "`/admin add @ник` — добавить админа\n"
+            "`/admin remove @ник` — удалить админа\n"
+            "`/admin block @ник` — заблокировать админа\n"
+            "`/admin unblock @ник` — разблокировать админа\n"
+            "`/admin list` — список всех админов\n\n"
+            "Пример:\n"
+            "`/admin add @Игрок`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    action = context.args[0].lower()
+    username = context.args[1].lstrip('@')
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(username=username).first()
+        if not user:
+            await update.message.reply_text(f"❌ Пользователь @{username} не найден!")
+            return
+        
+        if action == 'add':
+            if user.is_admin:
+                await update.message.reply_text(f"❌ @{username} уже является администратором!")
+                return
+            user.is_admin = True
+            user.is_blocked = False
+            session.commit()
+            await update.message.reply_text(f"✅ *@{username} добавлен в администраторы!*", parse_mode='Markdown')
+            
+            # Уведомление новому админу
+            try:
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=f"👑 *Поздравляем!*\n\nВы назначены администратором Пустоши!\n\n"
+                         f"Теперь вам доступны команды:\n"
+                         f"/phase, /give, /take, /setlevel, /reset, /cd, /resethunt, /item, /players, /gchest, /hide, /show, /call, /lscall, /admins",
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
+        
+        elif action == 'remove':
+            if not user.is_admin:
+                await update.message.reply_text(f"❌ @{username} не является администратором!")
+                return
+            user.is_admin = False
+            user.is_blocked = False
+            session.commit()
+            await update.message.reply_text(f"✅ *@{username} удалён из администраторов!*", parse_mode='Markdown')
+            
+            # Уведомление
+            try:
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=f"⚠️ *Внимание!*\n\nВы больше не являетесь администратором Пустоши.",
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
+        
+        elif action == 'block':
+            if not user.is_admin:
+                await update.message.reply_text(f"❌ @{username} не является администратором!")
+                return
+            if user.user_id in SUPER_ADMIN_IDS:
+                await update.message.reply_text(f"❌ Нельзя заблокировать главного администратора!")
+                return
+            user.is_blocked = True
+            session.commit()
+            await update.message.reply_text(f"✅ *@{username} заблокирован!* Админ-команды недоступны.", parse_mode='Markdown')
+        
+        elif action == 'unblock':
+            if not user.is_admin:
+                await update.message.reply_text(f"❌ @{username} не является администратором!")
+                return
+            user.is_blocked = False
+            session.commit()
+            await update.message.reply_text(f"✅ *@{username} разблокирован!*", parse_mode='Markdown')
+        
+        elif action == 'list':
+            admins = session.query(User).filter(User.is_admin == True).all()
+            if not admins:
+                await update.message.reply_text("📋 *Нет администраторов*", parse_mode='Markdown')
+                return
+            
+            text = "👑 *Список администраторов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            for i, admin in enumerate(admins, 1):
+                status = "🔴 ЗАБЛОКИРОВАН" if admin.is_blocked else "🟢 АКТИВЕН"
+                main_admin = " (ГЛАВНЫЙ)" if admin.user_id in SUPER_ADMIN_IDS else ""
+                text += f"{i}. *{admin.username or f'ID:{admin.user_id}'}*{main_admin}\n"
+                text += f"   📊 Статус: {status}\n"
+                text += f"   📊 Уровень: {admin.level}\n"
+                text += f"   ☢️ RC: {admin.radcoins:.0f}\n\n"
+            
+            await update.message.reply_text(text, parse_mode='Markdown')
+        
+        else:
+            await update.message.reply_text("❌ Используй: add, remove, block, unblock, list")
+            
+    except Exception as e:
+        logger.error(f"Error in admin_manage: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка!")
+    finally:
+        Session.remove()
 
 async def send_to_private(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     try:
@@ -3013,6 +3201,7 @@ def main():
     app.add_handler(CommandHandler("admins", admins))
     app.add_handler(CommandHandler("call", call))
     app.add_handler(CommandHandler("lscall", lscall))
+    app.add_handler(CommandHandler("admin", admin_manage))
     # Добавляем автобэкап каждый час
     scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
