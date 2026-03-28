@@ -764,22 +764,29 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=user_id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
+        
         if user.level < 2:
-            await update.message.reply_text("❌ Охота со 2 уровня")
+            await update.message.reply_text("❌ *Охота доступна со 2 уровня*", parse_mode='Markdown')
             return
+        
         phase = context.bot_data.get('phase', 1)
         if phase < 2:
-            await update.message.reply_text("❌ Охота недоступна! /phase 2")
+            await update.message.reply_text("❌ *Охота недоступна!* /phase 2", parse_mode='Markdown')
             return
         
         now = datetime.now()
+        
+        # Расчет кулдауна охоты
         cooldown = timedelta(days=1)
+        
         if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
             cooldown = timedelta(hours=12)
+        
         if user.pet == 'кайот':
             cooldown = timedelta(hours=12)
+        
         if (user.cooldown_reducer_until and user.cooldown_reducer_until > now) and user.pet == 'кайот':
             cooldown = timedelta(hours=6)
         
@@ -787,66 +794,71 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = cooldown - (now - user.last_hunt)
             hours = remaining.seconds // 3600
             minutes = (remaining.seconds % 3600) // 60
-            await update.message.reply_text(f"⏰ Следующая охота через {hours}ч {minutes}мин", parse_mode='Markdown')
+            await update.message.reply_text(f"⏰ *Следующая охота через {hours}ч {minutes}мин.*", parse_mode='Markdown')
             return
         
-        # Оружие
         # Определение оружия и шансов (приоритет: Гаусса > винтовка > гарпун > ружьё > обрез)
-weapon_name = "🗡️ Обрез"
-weapon = user.weapon
-chances = [89, 10, 0.99, 0.01]
-
-if weapon == 'gauss':
-    weapon_name = "⚡ Винтовка Гаусса"
-    chances = [40, 25, 20, 15]
-elif weapon == 'rifle':
-    weapon_name = "🔫 Винтовка"
-    chances = [50, 30, 15, 5]
-elif weapon == 'harpoon':
-    weapon_name = "🎣 Гарпун"
-    chances = [70, 20, 9, 1]
-elif weapon == 'shotgun':
-    weapon_name = "🔫 Ружьё"
-    chances = [75, 20, 4, 1]
+        weapon_name = "🗡️ Обрез"
+        weapon = user.weapon
+        chances = [89, 10, 0.99, 0.01]
         
+        if weapon == 'gauss':
+            weapon_name = "⚡ Винтовка Гаусса"
+            chances = [40, 25, 20, 15]
+        elif weapon == 'rifle':
+            weapon_name = "🔫 Винтовка"
+            chances = [50, 30, 15, 5]
+        elif weapon == 'harpoon':
+            weapon_name = "🎣 Гарпун"
+            chances = [70, 20, 9, 1]
+        elif weapon == 'shotgun':
+            weapon_name = "🔫 Ружьё"
+            chances = [75, 20, 4, 1]
+        
+        # Определение цели и наград
         roll = random.random() * 100
         if roll < chances[0]:
             reward_rf = 10
             reward_exp = 50
             target_level = 1
-            target_name = "🧬 Мутант 1 уровня"
+            target_name = "🧬 *Мутант 1 уровня*"
+            target_desc = "слабый, но опасный мутант"
         elif roll < chances[0] + chances[1]:
             reward_rf = 30
             reward_exp = 100
             target_level = 2
-            target_name = "🧪 Мутант 2 уровня"
+            target_name = "🧪 *Мутант 2 уровня*"
+            target_desc = "крепкий и агрессивный хищник"
         elif roll < chances[0] + chances[1] + chances[2]:
             reward_rf = 100
             reward_exp = 250
             target_level = 3
-            target_name = "👾 Мутант 3 уровня"
+            target_name = "👾 *Мутант 3 уровня*"
+            target_desc = "мощный, покрытый броней зверь"
             user.mutants_lvl3 += 1
         else:
             reward_rf = 1000
             reward_exp = 500
             target_level = 4
-            target_name = "👑 БОСС ПУСТОШИ"
+            target_name = "👑 *БОСС ПУСТОШИ*"
+            target_desc = "легендарное чудовище"
             user.bosses_killed += 1
         
         user.mutants_killed += 1
         survived = True
         death_msg = ""
         
-        # Смерть
+        # Проверка выживания (только для мутанта 3 уровня и Босса)
         if target_level >= 3:
             survive_chance = calculate_survive_chance(user, target_level)
+            
             if random.random() * 100 > survive_chance:
                 survived = False
                 if user.medkits > 0:
                     user.medkits -= 1
                     if random.random() * 100 <= survive_chance:
                         survived = True
-                        death_msg = "\n💊 Аптечка спасла!"
+                        death_msg = "\n💊 *Аптечка спасла вас!*"
                 if not survived:
                     user.deaths += 1
                     user.armor_type = None
@@ -859,7 +871,7 @@ elif weapon == 'shotgun':
                         user.camouflage_until -= timedelta(days=1)
                     reward_rf = 0
                     reward_exp = 0
-                    death_msg = "\n💀 ВЫ ПОГИБЛИ! Броня и оружие потеряны."
+                    death_msg = "\n💀 *ВЫ ПОГИБЛИ!* Броня, оружие и расходники потеряны."
         
         if survived:
             user.radfragments += reward_rf
@@ -869,22 +881,23 @@ elif weapon == 'shotgun':
         check_achievements(user, session)
         session.commit()
         
+        # Формирование сообщения
         if survived:
-            msg = f"🏹 *Охота* с {weapon_name}\n{target_name}\n💰 +{reward_rf} RF\n⚠️ +{reward_exp} опыта{death_msg}\n⏰ Следующая через {cooldown.seconds//3600}ч"
+            hours = cooldown.seconds // 3600
+            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon_name}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n*Вы победили!*\n\n💰 *Награда:* +{reward_rf} ☣️ РадФрагментов!\n⚠️ *Опыт:* +{reward_exp}!\n{death_msg}\n\n⏰ *Следующая охота через {hours} часов.*"
         else:
-            msg = f"🏹 *Охота* с {weapon_name}\n{target_name}\n{death_msg}"
+            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon_name}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n{death_msg}"
         
         await update.message.reply_text(msg, parse_mode='Markdown')
         
         if user.notifications_enabled:
-            scheduler.add_job(
-                lambda: context.bot.send_message(user_id, "🏹 Звери проснулись! /hunt"),
-                'date', run_date=now + cooldown
-            )
+            schedule_notification(user.user_id, context.bot, 'hunt', now + cooldown)
+    
     except Exception as e:
         logger.error(f"Error in hunt: {e}")
         session.rollback()
-        await update.message.reply_text("❌ Ошибка")
+        await update.message.reply_text("❌ Ошибка при выполнении охоты.")
+    
     finally:
         Session.remove()
 
