@@ -14,7 +14,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 
 # ==================== НАСТРОЙКИ ====================
-TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'
+TOKEN = '8090675768:AAG3Rq2aHgRFq6a5JEWBcVvg97WVUxPlZCM'
 ADMIN_CODE = '1252836169043217'
 SUPER_ADMIN_IDS = [6595788533]
 
