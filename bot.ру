@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 # ==================== НАСТРОЙКИ ====================
 TOKEN = '8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM'
 ADMIN_CODE = '1252836169043217'
-SUPER_ADMIN_IDS = [6595788533]  # Ваш ID
+SUPER_ADMIN_IDS = [6595788533]
 
 MAX_LEVEL = 100
 MAX_CLAN_BONUS = 10
@@ -48,8 +48,8 @@ class User(Base):
     energy_drink_until = Column(DateTime, nullable=True)
     shield_until = Column(DateTime, nullable=True)
     camouflage_until = Column(DateTime, nullable=True)
-    armor_type = Column(String, default=None)  # light, heavy, tactical, reinforced, power
-    weapon = Column(String, default=None)      # shotgun, harpoon, rifle, gauss
+    armor_type = Column(String, default=None)
+    weapon = Column(String, default=None)
     medkits = Column(Integer, default=0)
     detectors = Column(Integer, default=0)
     total_collects = Column(Integer, default=0)
@@ -74,9 +74,10 @@ class User(Base):
     chest_rare = Column(Integer, default=0)
     chest_epic = Column(Integer, default=0)
     chest_legendary = Column(Integer, default=0)
-    location = Column(String, default='normal')  # normal, military, city, wasteland, lab, forest, swamp, market
+    location = Column(String, default='normal')
     is_admin = Column(Boolean, default=False)
     is_blocked = Column(Boolean, default=False)
+    is_admin_visible = Column(Boolean, default=True)
 
 class Clan(Base):
     __tablename__ = 'clans'
@@ -134,7 +135,7 @@ def get_random_interval(user=None):
         base = base // 2
     if user and user.pet == 'кайот':
         base = base // 2
-    return base
+    return max(base, 5)
 
 def calculate_reward(level):
     level = min(level, MAX_LEVEL)
@@ -176,7 +177,6 @@ def check_achievements(user, session):
     return []
 
 def calculate_survive_chance(user, target_level):
-    """Расчет шанса выжить на охоте"""
     if user.teressa:
         return 100
     
@@ -192,7 +192,6 @@ def calculate_survive_chance(user, target_level):
     if user.armor_type and user.armor_type in armor_bonus:
         base = armor_bonus[user.armor_type]
     
-    # Мутант 3 уровня даёт +25%
     if target_level == 3:
         base = min(100, base + 25)
     
@@ -316,7 +315,6 @@ async def backup_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in backup_now: {e}")
         await update.message.reply_text("❌ Ошибка")
-
 # ==================== КОМАНДЫ: ОСНОВНЫЕ ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -335,12 +333,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db_user.radcoins += 1000
             session.commit()
             await update.message.reply_text(
-                "🌟 *RadCoin Bot — Пустошь*\n\n"
-                "🎁 *Бонус новичка: 1000 RC!*\n\n"
-                "💰 /collect — сбор ресурсов\n"
-                "🏹 /hunt — охота на мутантов\n"
-                "🛒 /shop — магазин\n"
-                "📖 /help — справка",
+                "🌟 *Добро пожаловать в RadCoin Bot — Пустошь!*\n\n"
+                "🎁 *Бонус новичка: 1000 РадКоинов!*\n\n"
+                "💰 Ты сталкер. Твоя цель — выжить и разбогатеть в этом опасном мире.\n\n"
+                "🔹 /collect — отправиться на поиски ресурсов\n"
+                "🔹 /hunt — охота на мутантов\n"
+                "🔹 /shop — магазин снаряжения\n"
+                "🔹 /help — полный список команд\n\n"
+                "Пустошь ждёт тебя, сталкер!",
                 parse_mode='Markdown'
             )
         else:
@@ -362,8 +362,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "📖 *RadCoin Bot — Пустошь*\n\n"
         "🎲 */collect* — сбор ресурсов\n"
-        "🏹 */hunt* — охота\n"
-        "🛒 */shop* — магазин\n"
+        "🏹 */hunt* — охота на мутантов\n"
+        "🛒 */shop* — магазин снаряжения\n"
         "💰 */buy [товар] [кол-во]* — купить\n"
         "📦 */inv* — инвентарь\n"
         "👤 */profile* — профиль\n"
@@ -388,21 +388,32 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         db_user = session.query(User).filter_by(user_id=user.id).first()
         if not db_user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала используй /start")
             return
         next_exp = get_exp_for_level(min(db_user.level + 1, MAX_LEVEL))
         exp_needed = max(0, next_exp - db_user.experience)
-        text = f"👤 *{db_user.username}*\n☢️ RC: {db_user.radcoins:.0f}\n☣️ RF: {db_user.radfragments}\n⚠️ Уровень: {db_user.level}"
+        
+        armor_names = {
+            'light': '🟢 Лёгкая броня (25%)',
+            'heavy': '🔵 Утяжеленная броня (40%)',
+            'tactical': '🟣 Тактическая броня (50%)',
+            'reinforced': '🟠 Тяжёлая броня (60%)',
+            'power': '🔴 Силовая броня (75%)'
+        }
+        
+        text = f"👤 *{db_user.username}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n☢️ *РадКоины:* {db_user.radcoins:.0f}\n☣️ *РадФрагменты:* {db_user.radfragments}\n⚠️ *Уровень:* {db_user.level}"
         if db_user.level < MAX_LEVEL:
-            text += f" ({exp_needed} опыта)"
+            text += f" ({exp_needed} опыта до {db_user.level + 1} уровня)"
+        if db_user.armor_type and db_user.armor_type in armor_names:
+            text += f"\n🛡️ *Броня:* {armor_names[db_user.armor_type]}"
         if db_user.pet:
-            text += f"\n🐾 Питомец: {db_user.pet}"
+            text += f"\n🐾 *Питомец:* {db_user.pet}"
         if db_user.clan_id:
             clan = session.query(Clan).filter_by(id=db_user.clan_id).first()
             if clan:
-                text += f"\n🏰 Клан: {clan.name}"
+                text += f"\n🏰 *Клан:* {clan.name}"
         if db_user.teressa:
-            text += f"\n✨ Тересса"
+            text += f"\n✨ *Артефакт:* Тересса"
         await send_to_private(update, context, text)
     except Exception as e:
         logger.error(f"Error in profile: {e}")
@@ -416,18 +427,18 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         db_user = session.query(User).filter_by(user_id=user.id).first()
         if not db_user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         text = (
-            f"📊 *Статистика {db_user.username}*\n"
-            f"🎲 Сборов: {db_user.total_collects}\n"
-            f"☢️ Всего RC: {db_user.total_rc_earned:.0f}\n"
-            f"🏆 Лучший сбор: {db_user.best_collect:.0f}\n"
-            f"🧬 Мутантов: {db_user.mutants_killed}\n"
-            f"👾 3 ур: {db_user.mutants_lvl3}\n"
-            f"👑 Боссов: {db_user.bosses_killed}\n"
-            f"💀 Смертей: {db_user.deaths}\n"
-            f"📈 Серия: {db_user.daily_streak} дней"
+            f"📊 *Статистика {db_user.username}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎲 *Сборов:* {db_user.total_collects}\n"
+            f"☢️ *Всего RC:* {db_user.total_rc_earned:.0f}\n"
+            f"🏆 *Лучший сбор:* {db_user.best_collect:.0f}\n"
+            f"🧬 *Мутантов убито:* {db_user.mutants_killed}\n"
+            f"👾 *Мутантов 3 ур:* {db_user.mutants_lvl3}\n"
+            f"👑 *Боссов:* {db_user.bosses_killed}\n"
+            f"💀 *Смертей:* {db_user.deaths}\n"
+            f"📈 *Серия сборов:* {db_user.daily_streak} дней"
         )
         await send_to_private(update, context, text)
     except Exception as e:
@@ -442,10 +453,10 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         db_user = session.query(User).filter_by(user_id=user.id).first()
         if not db_user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         current = json.loads(db_user.achievements) if db_user.achievements else []
-        text = "🏆 *Достижения*\n"
+        text = "🏆 *Достижения*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
         ach_names = ['добытчик', 'инвестор', 'терпила', 'кандидат', 'мастер', 'легенда', 'старатель', 'постоянный_клиент', 'миллионер']
         for ach in ach_names:
             text += f"✅ {ach}\n" if ach in current else f"⬜ {ach}\n"
@@ -467,16 +478,16 @@ async def announce(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.commit()
         if not context.args:
             status = "включены ✅" if user.notifications_enabled else "выключены ❌"
-            await update.message.reply_text(f"🔔 Уведомления {status}\n/announce on — включить\n/announce off — выключить", parse_mode='Markdown')
+            await update.message.reply_text(f"🔔 *Уведомления*\n\nСейчас уведомления {status}\n\n/announce on — включить\n/announce off — выключить", parse_mode='Markdown')
             return
         if context.args[0].lower() == 'on':
             user.notifications_enabled = True
             session.commit()
-            await update.message.reply_text("✅ Уведомления включены!", parse_mode='Markdown')
+            await update.message.reply_text("✅ *Уведомления включены!* Бот будет напоминать о сборе и охоте.", parse_mode='Markdown')
         elif context.args[0].lower() == 'off':
             user.notifications_enabled = False
             session.commit()
-            await update.message.reply_text("❌ Уведомления выключены!", parse_mode='Markdown')
+            await update.message.reply_text("❌ *Уведомления выключены!*", parse_mode='Markdown')
         else:
             await update.message.reply_text("❌ /announce on или off")
     except Exception as e:
@@ -488,12 +499,12 @@ async def announce(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def phase_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phase = context.bot_data.get('phase', 1)
     phases = {
-        1: {'name': '🟢 МИРНАЯ', 'desc': 'Нет мутантов, нет охоты', 'bonus': 'Безопасно'},
-        2: {'name': '🟡 ОПАСНАЯ', 'desc': 'Мутанты, охота, питомцы', 'bonus': 'Риск 10%'},
-        3: {'name': '🔴 АПОКАЛИПТИЧЕСКАЯ', 'desc': 'Аномалии, высокий риск', 'bonus': 'Аномалии 10%'}
+        1: {'name': '🟢 МИРНАЯ', 'desc': 'Пустошь спокойна. Мутанты не выходят из своих нор.', 'bonus': 'Охота недоступна. Нет риска встретить мутанта.'},
+        2: {'name': '🟡 ОПАСНАЯ', 'desc': 'Мутанты просыпаются. Охота становится доступной.', 'bonus': 'Питомцы появляются в Пустоши. Риск встречи 10%.'},
+        3: {'name': '🔴 АПОКАЛИПТИЧЕСКАЯ', 'desc': 'Пустошь сошла с ума. Аномалии искажают реальность.', 'bonus': 'Аномалии: Ловец(10%), Добытчик(10%), Склерозик(0.01%).'}
     }
     p = phases.get(phase, phases[1])
-    text = f"🌍 *Фаза {p['name']}*\n{p['desc']}\n⚡ {p['bonus']}"
+    text = f"🌍 *Фаза Пустоши: {p['name']}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n📖 {p['desc']}\n\n⚡ *Особенности:* {p['bonus']}"
     await send_to_private(update, context, text)
 
 # ==================== КОМАНДЫ: РЕСУРСЫ ====================
@@ -513,7 +524,7 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = user.next_collection_time - now
             hours = remaining.seconds // 3600
             minutes = (remaining.seconds % 3600) // 60
-            await update.message.reply_text(f"⏰ Следующий сбор через {hours}ч {minutes}мин.", parse_mode='Markdown')
+            await update.message.reply_text(f"⏰ *Пустошь ещё не восстановилась...*\nСледующий сбор через {hours}ч {minutes}мин.", parse_mode='Markdown')
             return
         
         actual_level = min(user.level, MAX_LEVEL)
@@ -537,37 +548,37 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rc_mult = 0
             rf_mult = 0
             exp_gain = random.randint(25, 50)
-            location_msg = "🏚️ Военка"
+            location_msg = "🏚️ *Военка* — вы обыскиваете руины в поисках сундуков"
         elif location == 'city':
             rc_mult = 1.5
             rf_mult = 0.5
-            location_msg = "🏙️ Город"
+            location_msg = "🏙️ *Город* — вы бродите по пустынным улицам"
         elif location == 'wasteland':
             rf_mult = 1.5
             rc_mult = 0.7
-            location_msg = "🌄 Пустошь"
+            location_msg = "🌄 *Пустошь* — вы крадётесь по радиоактивным землям"
         elif location == 'lab':
             exp_mult = 2
             rc_mult = 0.5
-            location_msg = "🧪 Лаба"
+            location_msg = "🧪 *Лаба* — вы исследуете заброшенную лабораторию"
         elif location == 'forest':
             pet_mult = 2
             rc_mult = 0.8
             rf_mult = 0
             exp_gain = random.randint(30, 80)
-            location_msg = "🌲 Лес"
+            location_msg = "🌲 *Лес* — вы пробираетесь через чащу"
         elif location == 'swamp':
             rc_mult = 2
             rf_mult = 0.5
-            location_msg = "🌊 Болота"
+            location_msg = "🌊 *Болота* — вы осторожно ступаете по зыбкой почве"
         elif location == 'market':
             rc_mult = 1.2
             rf_mult = 0
             chest_mult = 2
             exp_gain = random.randint(10, 30)
-            location_msg = "🎪 Рынок"
+            location_msg = "🎪 *Рынок* — вы бродите между прилавками"
         else:
-            location_msg = "🌍 Пустошь"
+            location_msg = "🌍 *Пустошь* — вы отправляетесь в знакомые места"
         
         # Аномалии
         anomaly_msg = ""
@@ -576,13 +587,13 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
             anomaly_roll = random.random()
             if anomaly_roll < 0.1:
                 base_rc = int(base_rc * 1.3)
-                anomaly_msg = "\n✨ ДОБЫТЧИК +30%"
+                anomaly_msg = "\n✨ *Аномалия ДОБЫТЧИК!* +30% к добыче! ✨"
             elif anomaly_roll < 0.2:
-                anomaly_msg = "\n🕸️ ЛОВЕЦ риск 90%"
+                anomaly_msg = "\n🕸️ *Аномалия ЛОВЕЦ!* Мутанты чуют вас издалека! 🕸️"
             elif anomaly_roll < 0.2001:
                 reduction = random.randint(1, 5)
                 actual_level = max(1, actual_level - reduction)
-                anomaly_msg = f"\n🧠 СКЛЕРОЗИК -{reduction} уровня"
+                anomaly_msg = f"\n🧠 *Аномалия СКЛЕРОЗИК!* Ваш уровень временно снижен на {reduction}! 🧠"
         
         # Клановый бонус
         clan_bonus = 0
@@ -647,6 +658,8 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 loss_percent = 10
             lost_rc = int(rc_gain * loss_percent / 100)
             rc_gain -= lost_rc
+            if lost_rc > 0:
+                anomaly_msg += f"\n😈 *МУТАНТ АТАКУЕТ!* Он крадёт {lost_rc} RC!"
         
         # Кристаллы
         crystal_gain = 0
@@ -710,45 +723,53 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         session.commit()
         
-        msg = f"🌄 *{location_msg}*\n\n🔍 +{rc_gain} RC, +{exp_gain} опыта"
+        # Формирование РП-сообщения
+        msg = f"🌄 *{location_msg}*\n\n🔍 Вы находите **{rc_gain}** ☢️ *РадКоинов* и получаете **{exp_gain}** ⚠️ *опыта*!"
+        
         if multiplier > 1:
-            msg += f" ✨ x{multiplier}"
+            msg += f"\n✨ *УДАЧА!* Множитель x{multiplier}! ✨"
         if fragment_gain > 0:
-            msg += f"\n☣️ +{fragment_gain} RF"
+            msg += f"\n☣️ *Вам везёт!* Вы находите **{fragment_gain}** РадФрагментов!"
         if lost_rc > 0:
-            msg += f"\n😈 Мутант украл {lost_rc} RC"
+            msg += f"\n😈 *МУТАНТ АТАКУЕТ!* Он крадёт {lost_rc} RC!"
         if crystal_gain > 0:
-            msg += f"\n💎 +{crystal_gain} RCr"
+            msg += f"\n💎 *Клановые кристаллы:* +{crystal_gain} RCr!"
         if level_up:
-            msg += f"\n🎉 УРОВЕНЬ {user.level}"
+            msg += f"\n🎉 *УРОВЕНЬ ПОВЫШЕН!* Теперь вы {user.level} уровень! 🎉"
         if anomaly_msg:
             msg += anomaly_msg
         if new_achievements:
-            msg += f"\n🏆 {', '.join(new_achievements)}"
+            msg += f"\n🏆 *Новые достижения:* {', '.join(new_achievements)}! 🏆"
+        
         if user.pet:
             pet_msgs = {
-                'овчарка': "🐕 Овчарка охраняет",
-                'волк': "🐺 Волк предупреждает",
-                'алабай': "🐕‍🦺 Алабай ведёт",
-                'рысь': "🐈 Рысь крадётся",
-                'пума': "🐆 Пума приносит кристаллы",
-                'попугай': "🦜 Попугай ускоряет",
-                'лис': "🦊 Лис скрывает",
-                'кайот': "🐕 Кайот ускоряет"
+                'овчарка': "🐕 *Ваша овчарка преданно охраняет вас, помогая искать ценности!*",
+                'волк': "🐺 *Волк идёт рядом, его чутьё предупреждает об опасности!*",
+                'алабай': "🐕‍🦺 *Алабай уверенно ведёт вас по самым опасным тропам!*",
+                'рысь': "🐈 *Рысь бесшумно крадётся впереди, замечая добычу первой!*",
+                'пума': "🐆 *Пума приносит удачу — кристаллы сами находят вас!*",
+                'попугай': "🦜 *Попугай весело щебечет, подбадривая вас и ускоряя обучение!*",
+                'лис': "🦊 *Лис хитро прищурился — мутанты не замечают вас в его тени!*",
+                'кайот': "🐕 *Кайот нетерпеливо повизгивает — время до следующего сбора сократилось вдвое!*"
             }
-            msg += f"\n{pet_msgs.get(user.pet, '🐾 Питомец рядом')}"
+            msg += f"\n{pet_msgs.get(user.pet, '🐾 *Ваш питомец рядом!*')}"
+        
         if pet_encounter:
-            msg += f"\n\n🐾 Встретили {pet_encounter}! /pet accept"
+            msg += f"\n\n🐾 *Вы встречаете {pet_encounter}!*\nИспользуйте `/pet accept` чтобы приручить."
             context.user_data['pending_pet'] = pet_encounter
-        msg += f"\n\n⏰ Следующий сбор через {interval//60}ч {interval%60}мин"
+        
+        next_hours = interval // 60
+        next_minutes = interval % 60
+        msg += f"\n\n⏰ *Пустошь восстановится через {next_hours}ч {next_minutes}мин.*"
+        
         if chest_found:
-            msg += f"\n\n🎁 Нашли {chest_found}!"
+            msg += f"\n\n🎁 *Вы нашли {chest_found}!*\nИспользуйте `/chest list` чтобы посмотреть сундуки."
         
         await update.message.reply_text(msg, parse_mode='Markdown')
         
         if user.notifications_enabled:
             scheduler.add_job(
-                lambda: context.bot.send_message(user_id, "🌄 Пустошь восстановилась! /collect"),
+                lambda: context.bot.send_message(user.user_id, "🌄 *Пустошь восстановилась!*\n\nВы снова можете отправиться на сбор ресурсов.\n\n🔔 Используйте `/collect`!"),
                 'date', run_date=user.next_collection_time
             )
     except Exception as e:
@@ -773,7 +794,7 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         phase = context.bot_data.get('phase', 1)
         if phase < 2:
-            await update.message.reply_text("❌ *Охота недоступна!* /phase 2", parse_mode='Markdown')
+            await update.message.reply_text("❌ *Охота недоступна!* Активируйте 2 фазу командой /phase 2", parse_mode='Markdown')
             return
         
         now = datetime.now()
@@ -797,25 +818,25 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"⏰ *Следующая охота через {hours}ч {minutes}мин.*", parse_mode='Markdown')
             return
         
-        # Определение оружия и шансов (приоритет: Гаусс > винтовка > гарпун > ружьё > обрез)
-        weapon_name = "🗡️ Обрез"
+        # Определение оружия (приоритет: Гаусс > винтовка > гарпун > ружьё)
+        weapon_name = "🗡️ *Обрез*"
         weapon = user.weapon
         chances = [89, 10, 0.99, 0.01]
         
         if weapon == 'gauss':
-            weapon_name = "⚡ Гаусс"
+            weapon_name = "⚡ *Винтовка Гаусса*"
             chances = [40, 25, 20, 15]
         elif weapon == 'rifle':
-            weapon_name = "🔫 Винтовка"
+            weapon_name = "🔫 *Винтовка*"
             chances = [50, 30, 15, 5]
         elif weapon == 'harpoon':
-            weapon_name = "🎣 Гарпун"
+            weapon_name = "🎣 *Гарпун*"
             chances = [70, 20, 9, 1]
         elif weapon == 'shotgun':
-            weapon_name = "🔫 Ружьё"
+            weapon_name = "🔫 *Ружьё*"
             chances = [75, 20, 4, 1]
         
-        # Определение цели и наград
+        # Определение цели
         roll = random.random() * 100
         if roll < chances[0]:
             reward_rf = 10
@@ -848,7 +869,7 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         survived = True
         death_msg = ""
         
-        # Проверка выживания (только для мутанта 3 уровня и Босса)
+        # Проверка выживания
         if target_level >= 3:
             survive_chance = calculate_survive_chance(user, target_level)
             
@@ -881,56 +902,72 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         check_achievements(user, session)
         session.commit()
         
-        # Формирование сообщения
+        # Формирование РП-сообщения
         if survived:
             hours = cooldown.seconds // 3600
-            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon_name}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n*Вы победили!*\n\n💰 *Награда:* +{reward_rf} ☣️ РадФрагментов!\n⚠️ *Опыт:* +{reward_exp}!\n{death_msg}\n\n⏰ *Следующая охота через {hours} часов.*"
+            msg = (
+                f"🏹 *Охота в Пустоши*\n\n"
+                f"Вы крадётесь с {weapon_name} в руках. Вокруг тишина, только ветер гуляет между руин...\n\n"
+                f"Внезапно из темноты выпрыгивает {target_name} — {target_desc}!\n"
+                f"*Схватка была жестокой, но вы вышли победителем!*\n\n"
+                f"💰 *Награда:* +{reward_rf} ☣️ РадФрагментов!\n"
+                f"⚠️ *Опыт:* +{reward_exp}!\n"
+                f"{death_msg}\n\n"
+                f"⏰ *Следующая охота через {hours} часов.*"
+            )
         else:
-            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon_name}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n{death_msg}"
+            msg = (
+                f"🏹 *Охота в Пустоши*\n\n"
+                f"Вы крадётесь с {weapon_name} в руках. Вокруг тишина, только ветер гуляет между руин...\n\n"
+                f"Из темноты выпрыгивает {target_name} — {target_desc}!\n"
+                f"{death_msg}"
+            )
         
         await update.message.reply_text(msg, parse_mode='Markdown')
         
         if user.notifications_enabled:
-            schedule_notification(user.user_id, context.bot, 'hunt', now + cooldown)
-    
+            scheduler.add_job(
+                lambda: context.bot.send_message(user.user_id, "🏹 *Звери проснулись!*\n\nОхота на мутантов снова доступна.\n\n🔔 Используйте `/hunt`!"),
+                'date', run_date=now + cooldown
+            )
     except Exception as e:
         logger.error(f"Error in hunt: {e}")
         session.rollback()
         await update.message.reply_text("❌ Ошибка при выполнении охоты.")
-    
     finally:
         Session.remove()
 
 async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("🎰 /casino [сумма]\n7% выигрыш x25")
+        await update.message.reply_text("🎰 *Казино Пустоши*\n\nИспользование: `/casino [сумма]`\nШанс выигрыша: 7% — выигрыш x25!", parse_mode='Markdown')
         return
     try:
         bet = int(context.args[0])
         if bet <= 0:
-            await update.message.reply_text("❌ Положительная ставка")
+            await update.message.reply_text("❌ Ставка должна быть положительной!")
             return
     except ValueError:
-        await update.message.reply_text("❌ Введите число")
+        await update.message.reply_text("❌ Введите число!")
         return
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if user.radcoins < bet:
             await update.message.reply_text(f"❌ Не хватает! У вас {user.radcoins:.0f} RC")
             return
+        
         user.radcoins -= bet
         if random.random() < 0.07:
             win = bet * 25
             user.radcoins += win
             session.commit()
-            await update.message.reply_text(f"🎰 ДЖЕКПОТ! +{win} RC! Баланс: {user.radcoins:.0f} RC", parse_mode='Markdown')
+            await update.message.reply_text(f"🎰 *ДЖЕКПОТ!*\n\n✨ *Вы выиграли {win} RC!* ✨\n💰 Баланс: {user.radcoins:.0f} RC", parse_mode='Markdown')
         else:
             session.commit()
-            await update.message.reply_text(f"💀 Проигрыш! -{bet} RC. Баланс: {user.radcoins:.0f} RC", parse_mode='Markdown')
+            await update.message.reply_text(f"💀 *ПРОИГРЫШ!*\n\nВы проиграли {bet} RC\n💰 Баланс: {user.radcoins:.0f} RC", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in casino: {e}")
         session.rollback()
@@ -940,25 +977,26 @@ async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def exchange(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("💱 /exchange [количество]\n1 RF = 50 RC + бонусы")
+        await update.message.reply_text("💱 *Обмен фрагментов*\n\nИспользование: `/exchange [количество]`\n1 RF = 50 RC, бонусы за 10/50/100", parse_mode='Markdown')
         return
     try:
         amount = int(context.args[0])
         if amount <= 0:
-            await update.message.reply_text("❌ Положительное число")
+            await update.message.reply_text("❌ Положительное число!")
             return
     except ValueError:
-        await update.message.reply_text("❌ Введите число")
+        await update.message.reply_text("❌ Введите число!")
         return
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if user.radfragments < amount:
             await update.message.reply_text(f"❌ Не хватает! У вас {user.radfragments} RF")
             return
+        
         if amount >= 100:
             coins = amount * 65 + 1500
         elif amount >= 50:
@@ -967,10 +1005,11 @@ async def exchange(update: Update, context: ContextTypes.DEFAULT_TYPE):
             coins = amount * 55 + 50
         else:
             coins = amount * 50
+        
         user.radfragments -= amount
         user.radcoins += coins
         session.commit()
-        await update.message.reply_text(f"💱 Обмен: {amount} RF → {coins} RC\n☢️ Баланс: {user.radcoins:.0f} RC", parse_mode='Markdown')
+        await update.message.reply_text(f"💱 *Обмен!*\n\n{amount} RF → {coins} RC\n☢️ Баланс: {user.radcoins:.0f} RC", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in exchange: {e}")
         session.rollback()
@@ -981,28 +1020,30 @@ async def exchange(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== КОМАНДЫ: МАГАЗИН И ПРЕДМЕТЫ ====================
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "🛒 *Магазин*\n\n"
+        "🛒 *Магазин Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "💰 *Цены в РадКоинах (RC)*\n\n"
         "*🛡️ БРОНЯ*\n"
-        "🥉 Лёгкая Броня (броня1) (1000) — 25% выжить\n"
-        "🥈 Укреплённая Броня (броня2) (2500) — 40% выжить (10 ур)\n"
-        "🥉 Тактическая Броня (броня3) (5000) — 50% выжить\n"
-        "🥈 Тяжёлая Броня (броня4) (10000) — 60% выжить (25 ур)\n"
-        "🥇 Силовая Броня (броня5) (25000) — 75% выжить (50 ур)\n\n"
+        "• 🟢 *Лёгкая броня* (1000) — 25% выжить\n"
+        "• 🔵 *Утяжеленная броня* (2500) — 40% выжить (10 уровень)\n"
+        "• 🟣 *Тактическая броня* (5000) — 50% выжить\n"
+        "• 🟠 *Тяжёлая броня* (10000) — 60% выжить (25 уровень)\n"
+        "• 🔴 *Силовая броня* (25000) — 75% выжить (50 уровень)\n\n"
         "*⚔️ ОРУЖИЕ*\n"
-        "🔫 ружье (300) — 75/20/4/1%\n"
-        "🎣 гарпун (500) — 70/20/9/1% (10 ур)\n"
-        "🔫 винтовка (5000) — 50/30/15/5% (25 ур)\n"
-        "⚡ гаусс (20000) — 40/25/20/15% (50 ур)\n\n"
+        "• 🔫 *Ружьё* (300) — 75/20/4/1%\n"
+        "• 🎣 *Гарпун* (500) — 70/20/9/1% (10 уровень)\n"
+        "• 🔫 *Винтовка* (5000) — 50/30/15/5% (25 уровень)\n"
+        "• ⚡ *Винтовка Гаусса* (20000) — 40/25/20/15% (50 уровень)\n\n"
         "*🛡️ ЗАЩИТА*\n"
-        "🛡️ щит (250) — потеря 50%→10% (7д)\n"
-        "🎭 камуфляж (1250) — шанс встречи 1% (7д)\n\n"
+        "• 🛡️ *Щит* (250) — потеря 50%→10% (7 дней)\n"
+        "• 🎭 *Камуфляж* (1250) — шанс встречи 1% (7 дней)\n\n"
         "*🔍 РАСХОДНИКИ*\n"
-        "🔎 металлоискатель (750) — RC -70%, 25% найти 10 RF\n"
-        "💊 аптечка (125) — +25% к шансу (макс 10)\n\n"
+        "• 🔎 *Металлоискатель* (750) — RC -70%, 25% найти 10 RF\n"
+        "• 💊 *Аптечка* (125) — +25% к шансу (макс 10)\n\n"
         "*⚡ УСИЛЕНИЯ*\n"
-        "⚡ энергетик (250) — +5 уровней\n"
-        "⏱️ редуктор (1250) — ускоряет восстановление (3д)\n\n"
-        "📝 /buy [товар] [кол-во]"
+        "• ⚡ *Энергетик* (250) — +5 уровней на 1 сбор\n"
+        "• ⏱️ *Редуктор* (1250) — ускоряет восстановление в 2 раза (3 дня)\n\n"
+        "📝 */buy [товар] [кол-во]* — купить\n"
+        "💡 *Оружие и броня многоразовые, до смерти*"
     )
     await send_to_private(update, context, text)
 
@@ -1016,7 +1057,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             count = int(context.args[1])
             if count <= 0 or count > 100:
-                await update.message.reply_text("❌ 1-100")
+                await update.message.reply_text("❌ Количество от 1 до 100")
                 return
         except ValueError:
             await update.message.reply_text("❌ Введите число")
@@ -1025,7 +1066,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         
         prices = {
@@ -1037,12 +1078,12 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         
         if item not in prices:
-            await update.message.reply_text(f"❌ Товар '{item}' не найден")
+            await update.message.reply_text(f"❌ Товар '{item}' не найден в магазине!")
             return
         
         total = prices[item] * count
         if user.radcoins < total:
-            await update.message.reply_text(f"❌ Нужно {total} RC, у вас {user.radcoins:.0f}")
+            await update.message.reply_text(f"❌ Не хватает РадКоинов! Нужно {total} RC, у вас {user.radcoins:.0f}")
             return
         
         user.radcoins -= total
@@ -1072,26 +1113,26 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
                 return
             user.weapon = 'rifle'
-        elif item == 'винтовка_гаусса':
+        elif item == 'гаусс':
             if user.level < 50:
                 await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
                 return
             user.weapon = 'gauss'
-        elif item == 'броня_легкая':
+        elif item == 'броня1':
             user.armor_type = 'light'
-        elif item == 'броня_утяжеленная':
+        elif item == 'броня2':
             if user.level < 10:
                 await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
                 return
             user.armor_type = 'heavy'
-        elif item == 'броня_тактическая':
+        elif item == 'броня3':
             user.armor_type = 'tactical'
-        elif item == 'броня_тяжелая':
+        elif item == 'броня4':
             if user.level < 25:
-                await update.message.reply_text("❌ Тяжелая броня доступна с 25 уровня!")
+                await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
                 return
             user.armor_type = 'reinforced'
-        elif item == 'броня_силовая':
+        elif item == 'броня5':
             if user.level < 50:
                 await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
                 return
@@ -1101,7 +1142,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         check_achievements(user, session)
         session.commit()
         
-        await update.message.reply_text(f"✅ Куплено {item} x{count}\n💰 -{total} RC\n☢️ Осталось: {user.radcoins:.0f} RC", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ *Покупка совершена!*\n\n📦 {item} x{count}\n💰 Потрачено: {total} RC\n☢️ Осталось: {user.radcoins:.0f} RC", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in buy: {e}")
         session.rollback()
@@ -1114,18 +1155,18 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         
         text = "📦 *Инвентарь*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
         if user.shield_until and user.shield_until > datetime.now():
-            text += f"🛡️ Щит — до {user.shield_until.strftime('%d.%m %H:%M')}\n"
+            text += f"🛡️ *Щит* — до {user.shield_until.strftime('%d.%m %H:%M')}\n"
         if user.camouflage_until and user.camouflage_until > datetime.now():
-            text += f"🎭 Камуфляж — до {user.camouflage_until.strftime('%d.%m %H:%M')}\n"
+            text += f"🎭 *Камуфляж* — до {user.camouflage_until.strftime('%d.%m %H:%M')}\n"
         if user.energy_drink_until and user.energy_drink_until > datetime.now():
-            text += f"⚡ Энергетик — до {user.energy_drink_until.strftime('%d.%m %H:%M')}\n"
+            text += f"⚡ *Энергетик* — до {user.energy_drink_until.strftime('%d.%m %H:%M')}\n"
         if user.cooldown_reducer_until and user.cooldown_reducer_until > datetime.now():
-            text += f"⏱️ Редуктор — до {user.cooldown_reducer_until.strftime('%d.%m %H:%M')}\n"
+            text += f"⏱️ *Редуктор* — до {user.cooldown_reducer_until.strftime('%d.%m %H:%M')}\n"
         
         armor_names = {
             'light': '🟢 Лёгкая броня (25%)',
@@ -1146,12 +1187,12 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.weapon and user.weapon in weapon_names:
             text += f"{weapon_names[user.weapon]} — экипировано\n"
         
-        text += f"\n💊 Аптечки: {user.medkits}/{MAX_MEDKITS}\n"
-        text += f"🔎 Металлоискатели: {user.detectors}\n"
+        text += f"\n💊 *Аптечки:* {user.medkits}/{MAX_MEDKITS}\n"
+        text += f"🔎 *Металлоискатели:* {user.detectors}\n"
         if user.pet:
-            text += f"\n🐾 Питомец: {user.pet}\n"
+            text += f"\n🐾 *Питомец:* {user.pet}\n"
         if user.teressa:
-            text += f"\n✨ Тересса (100% выживаемость)\n"
+            text += f"\n✨ *Артефакт:* Тересса (100% выживаемость)\n"
         
         await send_to_private(update, context, text)
     except Exception as e:
@@ -1163,17 +1204,23 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "🛠️ *Крафт*\n"
-            "💊 аптечка_обычная (25%) — 2 RF\n"
-            "💊 аптечка_усиленная (40%) — 5 RF + 35 RC\n"
-            "💊 аптечка_про (60%) — 10 RF + 100 RC\n"
-            "💊 аптечка_лег (80%) — 25 RF + 350 RC\n"
-            "🔎 металлоискатель — 8 RF + 20 RC\n"
-            "🎣 гарпун — 300 RF + 700 RC\n"
-            "🔫 винтовка — 250 RF + 3500 RC\n"
-            "🥈 броня2 — 250 RF + 2700 RC\n"
-            "🥇 броня3 — 800 RF + 6700 RC\n"
-            "✨ тересса — 100000 RF + 170000 RC (50 ур)",
+            "🛠️ *Крафт предметов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "*💊 АПТЕЧКИ*\n"
+            "• 💊 *Обычная аптечка* (25%) — 2 RF\n"
+            "• 💊 *Усиленная аптечка* (40%) — 5 RF + 35 RC\n"
+            "• 💊 *Профессиональная аптечка* (60%) — 10 RF + 100 RC\n"
+            "• 💊 *Легендарная аптечка* (80%) — 25 RF + 350 RC\n\n"
+            "*🔍 ПОИСК*\n"
+            "• 🔎 *Металлоискатель* — 8 RF + 20 RC\n\n"
+            "*🎣 ОРУЖИЕ*\n"
+            "• 🎣 *Гарпун* (70/20/9/1%) — 300 RF + 700 RC\n"
+            "• 🔫 *Винтовка* (50/30/15/5%) — 250 RF + 3500 RC\n\n"
+            "*🥇 БРОНЯ*\n"
+            "• 🥈 *Броня 2 ранга* (67%) — 250 RF + 2700 RC\n"
+            "• 🥇 *Броня 3 ранга* (99%) — 800 RF + 6700 RC\n\n"
+            "*✨ АРТЕФАКТЫ*\n"
+            "• ✨ *Тересса* (100% выживаемость) — 100000 RF + 170000 RC (50 уровень)\n\n"
+            "📝 */craft [предмет]* — создать предмет",
             parse_mode='Markdown'
         )
         return
@@ -1182,7 +1229,7 @@ async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         recipes = {
             'аптечка_обычная': {'rf': 2, 'rc': 0, 'level': 1},
@@ -1197,17 +1244,17 @@ async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'тересса': {'rf': 100000, 'rc': 170000, 'level': 50}
         }
         if item not in recipes:
-            await update.message.reply_text("❌ Неизвестный рецепт")
+            await update.message.reply_text("❌ Неизвестный рецепт! Используйте /craft для списка")
             return
         recipe = recipes[item]
         if user.level < recipe['level']:
-            await update.message.reply_text(f"❌ Нужен {recipe['level']} уровень")
+            await update.message.reply_text(f"❌ Нужен {recipe['level']} уровень! У вас {user.level}")
             return
         if user.radfragments < recipe['rf']:
-            await update.message.reply_text(f"❌ Нужно {recipe['rf']} RF")
+            await update.message.reply_text(f"❌ Нужно {recipe['rf']} RF, у вас {user.radfragments}")
             return
         if user.radcoins < recipe['rc']:
-            await update.message.reply_text(f"❌ Нужно {recipe['rc']} RC")
+            await update.message.reply_text(f"❌ Нужно {recipe['rc']} RC, у вас {user.radcoins:.0f}")
             return
         user.radfragments -= recipe['rf']
         user.radcoins -= recipe['rc']
@@ -1226,7 +1273,7 @@ async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             user.medkits = min(user.medkits + 1, MAX_MEDKITS)
         session.commit()
-        await update.message.reply_text(f"✅ Создано: {item}\n💰 Потрачено: {recipe['rf']} RF + {recipe['rc']} RC", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ *Крафт успешен!*\n\nСоздано: {item}\n💰 Потрачено: {recipe['rf']} RF + {recipe['rc']} RC", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in craft: {e}")
         session.rollback()
@@ -1237,7 +1284,22 @@ async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== КОМАНДЫ: ПИТОМЦЫ ====================
 async def pet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("🐾 /pet [accept/deny/bye]")
+        await update.message.reply_text(
+            "🐾 *Питомцы Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "При сборе есть шанс встретить дикое животное.\n"
+            "Приручить: `/pet accept`\n"
+            "Отказаться: `/pet deny`\n"
+            "Отпустить: `/pet bye` (дважды)\n\n"
+            "🐕 Овчарка — +5% к шансу найти RF\n"
+            "🐺 Волк — +10% к выживаемости\n"
+            "🐕‍🦺 Алабай — +1% к шансу встретить Босса\n"
+            "🐈 Рысь — +10% к добыче RC\n"
+            "🐆 Пума — +50% к клановым кристаллам\n"
+            "🦜 Попугай — +40% к опыту\n"
+            "🦊 Лис — шанс встречи с мутантом вдвое меньше\n"
+            "🐕 Кайот — кулдаун сбора и охоты вдвое меньше (редчайший)",
+            parse_mode='Markdown'
+        )
         return
     action = context.args[0].lower()
     if action == "accept":
@@ -1247,23 +1309,23 @@ async def pet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "bye":
         await pet_bye(update, context)
     else:
-        await update.message.reply_text("❌ accept/deny/bye")
+        await update.message.reply_text("❌ Используйте: accept, deny, bye")
 
 async def pet_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending = context.user_data.get('pending_pet')
     if not pending:
-        await update.message.reply_text("🐾 Нет питомца")
+        await update.message.reply_text("🐾 *Нет найденного питомца*\n\nОтправляйтесь в Пустошь — возможно, вам повезёт!", parse_mode='Markdown')
         return
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if user:
             if user.pet:
-                await update.message.reply_text("❌ У вас уже есть питомец")
+                await update.message.reply_text("❌ *У вас уже есть питомец!*", parse_mode='Markdown')
                 return
             user.pet = pending
             session.commit()
-            await update.message.reply_text(f"🐾 Приручен {pending}!")
+            await update.message.reply_text(f"🐾 *Питомец приручён!*\n\n✨ {pending} теперь ваш верный спутник! ✨\nИспользуйте /inv чтобы посмотреть его эффекты.", parse_mode='Markdown')
         context.user_data.pop('pending_pet')
     except Exception as e:
         logger.error(f"Error in pet_accept: {e}")
@@ -1275,25 +1337,26 @@ async def pet_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def pet_deny(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('pending_pet'):
         context.user_data.pop('pending_pet')
-        await update.message.reply_text("🐾 Питомец убежал")
+        await update.message.reply_text("🐾 *Питомец убежал*\n\nВозможно, в следующий раз вам повезёт больше...", parse_mode='Markdown')
     else:
-        await update.message.reply_text("Нет питомца")
+        await update.message.reply_text("Нет найденного питомца")
 
 async def pet_bye(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user or not user.pet:
-            await update.message.reply_text("❌ Нет питомца")
+            await update.message.reply_text("❌ *У вас нет питомца*", parse_mode='Markdown')
             return
         if not context.user_data.get('confirm_bye'):
             context.user_data['confirm_bye'] = True
-            await update.message.reply_text(f"⚠️ Отпустить {user.pet}? /pet bye ещё раз")
+            await update.message.reply_text(f"⚠️ *Вы уверены?*\n\nОтпустить {user.pet}?\nВведите `/pet bye` ещё раз для подтверждения.", parse_mode='Markdown')
             return
         context.user_data.pop('confirm_bye')
+        pet_name = user.pet
         user.pet = None
         session.commit()
-        await update.message.reply_text(f"🐾 {user.pet} отпущен")
+        await update.message.reply_text(f"🐾 *{pet_name} отпущен на свободу*\n\nВозможно, вы встретитесь снова...", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in pet_bye: {e}")
         session.rollback()
@@ -1305,7 +1368,14 @@ async def pet_bye(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def clan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "🏰 /clan [create/join/info/invest/up/list/goodbye]",
+            "🏰 *Управление кланом*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/clan create [название] — создать клан (2 уровень, 1000 RC)\n"
+            "/clan join [название] — вступить в клан (1 уровень)\n"
+            "/clan info — информация о клане\n"
+            "/clan invest [сумма] — вложить RC в казну\n"
+            "/clan up [коллектор/опыт/удвоение] — улучшить клан\n"
+            "/clan list — список всех кланов\n"
+            "/clan goodbye — распустить клан (дважды)",
             parse_mode='Markdown'
         )
         return
@@ -1325,7 +1395,7 @@ async def clan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "goodbye":
         await clan_goodbye(update, context)
     else:
-        await update.message.reply_text("❌ Неизвестно")
+        await update.message.reply_text("❌ Неизвестная команда")
 
 async def clan_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
@@ -1339,20 +1409,20 @@ async def clan_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if user.clan_id:
             await update.message.reply_text("❌ Вы уже в клане")
             return
         if user.level < 2:
-            await update.message.reply_text("❌ Нужен 2 уровень")
+            await update.message.reply_text("❌ Для создания клана нужен 2 уровень")
             return
         if user.radcoins < 1000:
-            await update.message.reply_text(f"❌ Нужно 1000 RC")
+            await update.message.reply_text(f"❌ Для создания клана нужно 1000 RC, у вас {user.radcoins:.0f}")
             return
         existing = session.query(Clan).filter_by(name=name).first()
         if existing:
-            await update.message.reply_text("❌ Клан существует")
+            await update.message.reply_text("❌ Клан с таким названием уже существует")
             return
         clan = Clan(name=name, leader_id=user.user_id)
         session.add(clan)
@@ -1360,7 +1430,7 @@ async def clan_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.clan_id = clan.id
         user.radcoins -= 1000
         session.commit()
-        await update.message.reply_text(f"🏰 Клан {name} создан!", parse_mode='Markdown')
+        await update.message.reply_text(f"🏰 *Клан {name} создан!*\n\n👑 Вы стали лидером клана.", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_create: {e}")
         session.rollback()
@@ -1377,7 +1447,7 @@ async def clan_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if user.clan_id:
             await update.message.reply_text("❌ Вы уже в клане")
@@ -1388,7 +1458,7 @@ async def clan_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         user.clan_id = clan.id
         session.commit()
-        await update.message.reply_text(f"✅ Вступили в {clan.name}!", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ *Вы вступили в клан {clan.name}!*\n\n🏰 Добро пожаловать!", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_join: {e}")
         session.rollback()
@@ -1409,7 +1479,17 @@ async def clan_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         members = session.query(User).filter_by(clan_id=clan.id).count()
         leader = session.query(User).filter_by(user_id=clan.leader_id).first()
-        text = f"🏰 *{clan.name}*\n👑 Лидер: @{leader.username if leader else '?'}\n👥 Участников: {members}\n💰 Казна: {clan.treasury_coins:.0f} RC\n💎 Кристаллы: {clan.treasury_crystals}\n📈 +{clan.collect_bonus}% RC, +{clan.exp_bonus*5}% опыт, +{clan.double_bonus}% удвоение"
+        text = (
+            f"🏰 *{clan.name}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👑 *Лидер:* @{leader.username if leader else '?'}\n"
+            f"👥 *Участников:* {members}\n"
+            f"💰 *Казна:* {clan.treasury_coins:.0f} RC\n"
+            f"💎 *Кристаллы:* {clan.treasury_crystals}\n\n"
+            f"📈 *Улучшения:*\n"
+            f"  • +{clan.collect_bonus}% к сбору RC\n"
+            f"  • +{clan.exp_bonus * 5}% к опыту\n"
+            f"  • +{clan.double_bonus}% к шансу удвоения"
+        )
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_info: {e}")
@@ -1440,13 +1520,13 @@ async def clan_invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Клан не найден")
             return
         if user.radcoins < amount:
-            await update.message.reply_text(f"❌ Не хватает!")
+            await update.message.reply_text(f"❌ Не хватает! У вас {user.radcoins:.0f} RC")
             return
         user.radcoins -= amount
         clan.treasury_coins += amount
         check_achievements(user, session)
         session.commit()
-        await update.message.reply_text(f"💰 Инвестировано {amount} RC в {clan.name}", parse_mode='Markdown')
+        await update.message.reply_text(f"💰 *Инвестиция!*\n\nВы вложили {amount} RC в казну клана {clan.name}.", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_invest: {e}")
         session.rollback()
@@ -1470,35 +1550,38 @@ async def clan_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Клан не найден")
             return
         if clan.leader_id != user.user_id:
-            await update.message.reply_text("❌ Только лидер")
+            await update.message.reply_text("❌ Только лидер может улучшать клан")
             return
+        
         if upgrade == 'коллектор':
             if clan.collect_bonus >= MAX_CLAN_BONUS:
-                await update.message.reply_text("❌ Максимум 10")
+                await update.message.reply_text("❌ Максимальный уровень коллектора (10)")
                 return
             cost = 25 + clan.collect_bonus * 5
             clan.collect_bonus += 1
         elif upgrade == 'опыт':
             if clan.exp_bonus >= MAX_CLAN_BONUS:
-                await update.message.reply_text("❌ Максимум 10")
+                await update.message.reply_text("❌ Максимальный уровень опыта (10)")
                 return
             cost = 25 + clan.exp_bonus * 5
             clan.exp_bonus += 1
         elif upgrade == 'удвоение':
             if clan.double_bonus >= MAX_CLAN_BONUS:
-                await update.message.reply_text("❌ Максимум 10")
+                await update.message.reply_text("❌ Максимальный уровень удвоения (10)")
                 return
             cost = 25 + clan.double_bonus * 5
             clan.double_bonus += 1
         else:
-            await update.message.reply_text("❌ коллектор/опыт/удвоение")
+            await update.message.reply_text("❌ Используйте: коллектор, опыт, удвоение")
             return
+        
         if clan.treasury_crystals < cost:
-            await update.message.reply_text(f"❌ Нужно {cost} 💎")
+            await update.message.reply_text(f"❌ Нужно {cost} кристаллов, у клана {clan.treasury_crystals}")
             return
+        
         clan.treasury_crystals -= cost
         session.commit()
-        await update.message.reply_text(f"📈 Улучшен {upgrade}!", parse_mode='Markdown')
+        await update.message.reply_text(f"📈 *Улучшение!*\n\nУлучшен {upgrade}!", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_upgrade: {e}")
         session.rollback()
@@ -1511,12 +1594,12 @@ async def clan_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         clans = session.query(Clan).order_by(Clan.created_at).all()
         if not clans:
-            await update.message.reply_text("📋 Нет кланов", parse_mode='Markdown')
+            await update.message.reply_text("📋 *Нет созданных кланов*\n\nСоздайте свой клан командой /clan create", parse_mode='Markdown')
             return
-        text = "📋 *Список кланов*\n"
+        text = "📋 *Список кланов Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         for clan in clans:
             members = session.query(User).filter_by(clan_id=clan.id).count()
-            text += f"🏰 {clan.name} — 👥 {members}\n"
+            text += f"🏰 *{clan.name}* — 👥 {members} участников\n"
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_list: {e}")
@@ -1536,18 +1619,18 @@ async def clan_goodbye(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Клан не найден")
             return
         if clan.leader_id != user.user_id:
-            await update.message.reply_text("❌ Только лидер")
+            await update.message.reply_text("❌ Только лидер может распустить клан")
             return
         if not context.user_data.get('confirm_clan_delete'):
             context.user_data['confirm_clan_delete'] = True
-            await update.message.reply_text(f"⚠️ Распустить {clan.name}? /clan goodbye ещё раз")
+            await update.message.reply_text(f"⚠️ *Вы уверены?*\n\nРаспустить клан {clan.name}?\nВведите `/clan goodbye` ещё раз для подтверждения.", parse_mode='Markdown')
             return
         context.user_data.pop('confirm_clan_delete')
         for member in clan.members:
             member.clan_id = None
         session.delete(clan)
         session.commit()
-        await update.message.reply_text(f"🏰 Клан {clan.name} распущен", parse_mode='Markdown')
+        await update.message.reply_text(f"🏰 *Клан {clan.name} распущен*\n\nВсе участники покинули клан.", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_goodbye: {e}")
         session.rollback()
@@ -1559,7 +1642,13 @@ async def clan_goodbye(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "🎁 *Сундуки*\n/chest list — список\n/chest chance — шансы\n/chest open [common/rare/epic/leg] — открыть",
+            "🎁 *Сундуки Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/chest list — список ваших сундуков\n"
+            "/chest chance — шансы выпадения\n"
+            "/chest open common — открыть обычный\n"
+            "/chest open rare — открыть редкий\n"
+            "/chest open epic — открыть эпический\n"
+            "/chest open leg — открыть легендарный",
             parse_mode='Markdown'
         )
         return
@@ -1574,16 +1663,23 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await chest_open(update, context, context.args[1].lower())
     else:
-        await update.message.reply_text("❌ list/chance/open")
+        await update.message.reply_text("❌ Используйте: list, chance, open")
 
 async def chest_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
-        text = f"🎁 *Сундуки*\n🟢 Обычные: {user.chest_common}\n🔵 Редкие: {user.chest_rare}\n🟣 Эпические: {user.chest_epic}\n🟠 Легендарные: {user.chest_legendary}"
+        text = (
+            f"🎁 *Ваши сундуки*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🟢 *Обычные:* {user.chest_common}\n"
+            f"🔵 *Редкие:* {user.chest_rare}\n"
+            f"🟣 *Эпические:* {user.chest_epic}\n"
+            f"🟠 *Легендарные:* {user.chest_legendary}\n\n"
+            "💡 Открыть: `/chest open [тип]`"
+        )
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in chest_list: {e}")
@@ -1593,11 +1689,45 @@ async def chest_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def chest_chance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "🎲 *Шансы сундуков*\n"
-        "🟢 Обычный: RC 100-500, RF 2-10, аптечка, металлоискатель, щит, камуфляж\n"
-        "🔵 Редкий: RC 500-1000, RF 10-50, гарпун, броня1, аптечка усил., камуфляж, щит, энергетик\n"
-        "🟣 Эпический: RC 1000-2500, RF 50-250, броня2, гарпун, металлоискатель, аптечка про, энергетик, редуктор, сундук\n"
-        "🟠 Легендарный: броня3, винтовка, аптечка лег., редуктор, питомец, сундук, гарпун, RC 2500-10000, RF 250-1000, Тересса (0.0001%)"
+        "🎲 *Шансы выпадения в сундуках*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "*🟢 ОБЫЧНЫЙ СУНДУК* (2 предмета)\n"
+        "• RC: 100-500\n"
+        "• RF: 2-10\n"
+        "• 💊 Аптечка обычная\n"
+        "• 🔎 Металлоискатель\n"
+        "• 🛡️ Щит\n"
+        "• 🎭 Камуфляж\n\n"
+        "*🔵 РЕДКИЙ СУНДУК* (3 предмета)\n"
+        "• RC: 500-1000\n"
+        "• RF: 10-50\n"
+        "• 🎣 Гарпун\n"
+        "• 🥉 Броня 1\n"
+        "• 💊 Аптечка усиленная (1-3 шт)\n"
+        "• 🎭 Камуфляж\n"
+        "• 🛡️ Щит\n"
+        "• ⚡ Энергетик\n\n"
+        "*🟣 ЭПИЧЕСКИЙ СУНДУК* (4 предмета)\n"
+        "• RC: 1000-2500\n"
+        "• RF: 50-250\n"
+        "• 🥈 Броня 2\n"
+        "• 🎣 Гарпун\n"
+        "• 🔎 Металлоискатель\n"
+        "• 💊 Аптечка про (1-3 шт)\n"
+        "• ⚡ Энергетик\n"
+        "• ⏱️ Редуктор\n"
+        "• 🟢 Обычный сундук\n\n"
+        "*🟠 ЛЕГЕНДАРНЫЙ СУНДУК* (4 предмета)\n"
+        "• 🥇 Броня 3\n"
+        "• 🔫 Винтовка\n"
+        "• 💊 Аптечка легендарная (1-3 шт)\n"
+        "• ⏱️ Редуктор\n"
+        "• 🐾 Случайный питомец (0.5%)\n"
+        "• 🔵 Редкий сундук\n"
+        "• 🎣 Гарпун\n"
+        "• ☢️ RC (2500-10000)\n"
+        "• ☣️ RF (250-1000)\n"
+        "• ✨ *Тересса* (шанс 0.0001% — 1 на миллион!)\n\n"
+        "💡 Легендарные сундуки — большая редкость. Береги их!"
     )
     await update.message.reply_text(text, parse_mode='Markdown')
 
@@ -1606,12 +1736,12 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         
         if chest_type == 'common':
             if user.chest_common <= 0:
-                await update.message.reply_text("❌ Нет обычных сундуков")
+                await update.message.reply_text("❌ У вас нет обычных сундуков!")
                 return
             user.chest_common -= 1
             items = ['rc', 'rf', 'medkit', 'detector', 'shield', 'camouflage']
@@ -1628,7 +1758,7 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                     rewards.append(f"☣️ {amt} RF")
                 elif r == 'medkit':
                     user.medkits = min(user.medkits + 1, MAX_MEDKITS)
-                    rewards.append("💊 Аптечка")
+                    rewards.append("💊 Обычная аптечка")
                 elif r == 'detector':
                     user.detectors += 1
                     rewards.append("🔎 Металлоискатель")
@@ -1638,11 +1768,11 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                 elif r == 'camouflage':
                     user.camouflage_until = datetime.now() + timedelta(days=7)
                     rewards.append("🎭 Камуфляж")
-            name = "🟢 Обычный"
+            name = "🟢 Обычный сундук"
         
         elif chest_type == 'rare':
             if user.chest_rare <= 0:
-                await update.message.reply_text("❌ Нет редких сундуков")
+                await update.message.reply_text("❌ У вас нет редких сундуков!")
                 return
             user.chest_rare -= 1
             items = ['rc', 'rf', 'harpoon', 'armor1', 'medkit_enh', 'camouflage', 'shield', 'energy']
@@ -1666,7 +1796,7 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                 elif r == 'medkit_enh':
                     amt = random.randint(1, 3)
                     user.medkits = min(user.medkits + amt, MAX_MEDKITS)
-                    rewards.append(f"💊 Усиленная x{amt}")
+                    rewards.append(f"💊 Усиленная аптечка x{amt}")
                 elif r == 'camouflage':
                     user.camouflage_until = datetime.now() + timedelta(days=7)
                     rewards.append("🎭 Камуфляж")
@@ -1676,11 +1806,11 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                 elif r == 'energy':
                     user.energy_drink_until = datetime.now() + timedelta(days=1)
                     rewards.append("⚡ Энергетик")
-            name = "🔵 Редкий"
+            name = "🔵 Редкий сундук"
         
         elif chest_type == 'epic':
             if user.chest_epic <= 0:
-                await update.message.reply_text("❌ Нет эпических сундуков")
+                await update.message.reply_text("❌ У вас нет эпических сундуков!")
                 return
             user.chest_epic -= 1
             items = ['rc', 'rf', 'armor2', 'harpoon', 'detector', 'medkit_pro', 'energy', 'reducer', 'chest_common']
@@ -1707,7 +1837,7 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                 elif r == 'medkit_pro':
                     amt = random.randint(1, 3)
                     user.medkits = min(user.medkits + amt, MAX_MEDKITS)
-                    rewards.append(f"💊 Профессиональная x{amt}")
+                    rewards.append(f"💊 Профессиональная аптечка x{amt}")
                 elif r == 'energy':
                     user.energy_drink_until = datetime.now() + timedelta(days=1)
                     rewards.append("⚡ Энергетик")
@@ -1717,11 +1847,11 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                 elif r == 'chest_common':
                     user.chest_common += 1
                     rewards.append("🟢 Обычный сундук")
-            name = "🟣 Эпический"
+            name = "🟣 Эпический сундук"
         
         elif chest_type == 'leg':
             if user.chest_legendary <= 0:
-                await update.message.reply_text("❌ Нет легендарных сундуков")
+                await update.message.reply_text("❌ У вас нет легендарных сундуков!")
                 return
             user.chest_legendary -= 1
             items = ['rc', 'rf', 'armor3', 'rifle', 'medkit_leg', 'reducer', 'pet', 'chest_rare', 'harpoon', 'teressa']
@@ -1745,7 +1875,7 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                 elif r == 'medkit_leg':
                     amt = random.randint(1, 3)
                     user.medkits = min(user.medkits + amt, MAX_MEDKITS)
-                    rewards.append(f"💊 Легендарная x{amt}")
+                    rewards.append(f"💊 Легендарная аптечка x{amt}")
                 elif r == 'reducer':
                     user.cooldown_reducer_until = datetime.now() + timedelta(days=3)
                     rewards.append("⏱️ Редуктор")
@@ -1755,7 +1885,7 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                         weights = [1, 1, 1, 1, 1, 1, 1, 0.5]
                         pet = random.choices(pets, weights=weights)[0]
                         user.pet = pet
-                        rewards.append(f"🐾 {pet}")
+                        rewards.append(f"🐾 Питомец: {pet}")
                     else:
                         rewards.append("❌ Питомец не выпал")
                 elif r == 'chest_rare':
@@ -1767,16 +1897,16 @@ async def chest_open(update: Update, context: ContextTypes.DEFAULT_TYPE, chest_t
                 elif r == 'teressa':
                     if random.random() < 0.000001:
                         user.teressa = True
-                        rewards.append("✨ ТЕРЕССА!")
+                        rewards.append("✨ *ТЕРЕССА!* Бессмертие!")
                     else:
                         rewards.append("❌ Тересса не выпала")
-            name = "🟠 Легендарный"
+            name = "🟠 Легендарный сундук"
         else:
-            await update.message.reply_text("❌ Тип: common, rare, epic, leg")
+            await update.message.reply_text("❌ Тип сундука: common, rare, epic, leg")
             return
         
         session.commit()
-        text = f"🎁 *{name} сундук*\n📦 Находки:\n" + "\n".join(f"• {r}" for r in rewards)
+        text = f"🎁 *Вы открыли {name}!*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n📦 *Находки:*\n" + "\n".join(f"• {r}" for r in rewards)
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in chest_open: {e}")
@@ -1790,7 +1920,7 @@ async def gchest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 2:
-        await update.message.reply_text("❌ /gchest @ник [тип] [кол-во]")
+        await update.message.reply_text("❌ /gchest @ник [тип] [кол-во]\n\nТипы: common, rare, epic, legendary", parse_mode='Markdown')
         return
     username = context.args[0].lstrip('@')
     chest_type = context.args[1].lower()
@@ -1799,7 +1929,7 @@ async def gchest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             count = int(context.args[2])
             if count <= 0 or count > 100:
-                await update.message.reply_text("❌ 1-100")
+                await update.message.reply_text("❌ Количество от 1 до 100")
                 return
         except ValueError:
             await update.message.reply_text("❌ Введите число")
@@ -1808,7 +1938,7 @@ async def gchest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(username=username).first()
         if not user:
-            await update.message.reply_text(f"❌ @{username} не найден")
+            await update.message.reply_text(f"❌ Пользователь @{username} не найден!")
             return
         if chest_type == 'common':
             user.chest_common += count
@@ -1826,11 +1956,11 @@ async def gchest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Тип: common, rare, epic, legendary")
             return
         session.commit()
-        await update.message.reply_text(f"✅ Выдано {count} {emoji} {chest_type} сундуков @{username}")
+        await update.message.reply_text(f"✅ *Выдано {count} {emoji} {chest_type} сундуков* @{username}", parse_mode='Markdown')
         try:
             await context.bot.send_message(
                 chat_id=user.user_id,
-                text=f"🎁 Вам выдали {count} {chest_type} сундуков!"
+                text=f"🎁 *Вам выдали {count} {chest_type} сундуков!*"
             )
         except:
             pass
@@ -1848,15 +1978,33 @@ async def locate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user = session.query(User).filter_by(user_id=update.effective_user.id).first()
             if not user:
-                await update.message.reply_text("❌ /start")
+                await update.message.reply_text("❌ Сначала /start")
                 return
             loc = user.location if hasattr(user, 'location') else 'normal'
             loc_names = {
-                'normal': '🌍 Обычная', 'military': '🏚️ Военка', 'city': '🏙️ Город',
-                'wasteland': '🌄 Пустошь', 'lab': '🧪 Лаба', 'forest': '🌲 Лес',
-                'swamp': '🌊 Болота', 'market': '🎪 Рынок'
+                'normal': '🌍 Обычная Пустошь',
+                'military': '🏚️ Военка',
+                'city': '🏙️ Город',
+                'wasteland': '🌄 Пустошь',
+                'lab': '🧪 Лаба',
+                'forest': '🌲 Лес',
+                'swamp': '🌊 Болота',
+                'market': '🎪 Рынок'
             }
-            await update.message.reply_text(f"🗺️ Текущая локация: {loc_names.get(loc, '🌍 Обычная')}\n/locate [normal/military/city/wasteland/lab/forest/swamp/market]")
+            await update.message.reply_text(
+                f"🗺️ *Текущая локация:* {loc_names.get(loc, '🌍 Обычная Пустошь')}\n\n"
+                f"📌 *Сменить:* `/locate [название]`\n\n"
+                f"Доступные локации:\n"
+                f"🌍 normal — обычная (стандартные шансы)\n"
+                f"🏚️ military — Военка (сундуки x3, опыт 25-50)\n"
+                f"🏙️ city — Город (RC +50%)\n"
+                f"🌄 wasteland — Пустошь (RF +50%)\n"
+                f"🧪 lab — Лаба (опыт x2)\n"
+                f"🌲 forest — Лес (питомцы x2)\n"
+                f"🌊 swamp — Болота (RC +100%, риск мутанта)\n"
+                f"🎪 market — Рынок (предметы 10%)",
+                parse_mode='Markdown'
+            )
         finally:
             Session.remove()
         return
@@ -1870,16 +2018,21 @@ async def locate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         user.location = loc
         session.commit()
         loc_names = {
-            'normal': '🌍 Обычная', 'military': '🏚️ Военка', 'city': '🏙️ Город',
-            'wasteland': '🌄 Пустошь', 'lab': '🧪 Лаба', 'forest': '🌲 Лес',
-            'swamp': '🌊 Болота', 'market': '🎪 Рынок'
+            'normal': '🌍 Обычная Пустошь',
+            'military': '🏚️ Военка',
+            'city': '🏙️ Город',
+            'wasteland': '🌄 Пустошь',
+            'lab': '🧪 Лаба',
+            'forest': '🌲 Лес',
+            'swamp': '🌊 Болота',
+            'market': '🎪 Рынок'
         }
-        await update.message.reply_text(f"🗺️ Локация изменена на {loc_names[loc]}! Следующий сбор будет здесь.")
+        await update.message.reply_text(f"🗺️ *Локация изменена!*\n\n📍 Теперь вы отправляетесь в *{loc_names[loc]}*\n🔔 Следующий сбор будет здесь.", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in locate: {e}")
         await update.message.reply_text("❌ Ошибка")
@@ -1889,47 +2042,57 @@ async def locate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== КОМАНДЫ: ТАБЛИЦА ЛИДЕРОВ ====================
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("🏆 /top [level/rc/boss/hunt/clan]")
+        await update.message.reply_text(
+            "🏆 *Таблица лидеров Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🏆 `/top level` — топ по уровню\n"
+            "💰 `/top rc` — топ по РадКоинами\n"
+            "👑 `/top boss` — топ по убитым Боссам\n"
+            "🧬 `/top hunt` — топ по убитым мутантам\n"
+            "🏰 `/top clan` — топ по кланам",
+            parse_mode='Markdown'
+        )
         return
     cat = context.args[0].lower()
     session = Session()
     try:
         if cat == 'level':
             users = session.query(User).order_by(User.level.desc()).limit(10).all()
-            title = "🏆 Топ-10 по уровню"
+            title = "🏆 *Топ-10 по уровню*"
             val = lambda u: u.level
         elif cat == 'rc':
             users = session.query(User).order_by(User.radcoins.desc()).limit(10).all()
-            title = "💰 Топ-10 по RC"
+            title = "💰 *Топ-10 по РадКоинами*"
             val = lambda u: f"{u.radcoins:.0f}"
         elif cat == 'boss':
             users = session.query(User).order_by(User.bosses_killed.desc()).limit(10).all()
-            title = "👑 Топ-10 по боссам"
+            title = "👑 *Топ-10 по убитым Боссам*"
             val = lambda u: u.bosses_killed
         elif cat == 'hunt':
             users = session.query(User).order_by(User.mutants_killed.desc()).limit(10).all()
-            title = "🧬 Топ-10 по мутантам"
+            title = "🧬 *Топ-10 по убитым мутантам*"
             val = lambda u: u.mutants_killed
         elif cat == 'clan':
             clans = session.query(Clan).all()
             stats = [(c.name, session.query(User).filter_by(clan_id=c.id).count()) for c in clans]
             stats.sort(key=lambda x: x[1], reverse=True)
-            text = "🏰 Топ-10 кланов\n"
+            text = "🏰 *Топ-10 кланов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             for i, (n, c) in enumerate(stats[:10], 1):
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-                text += f"{medal} {n} — {c}\n"
+                text += f"{medal} *{n}* — 👥 {c}\n"
             await update.message.reply_text(text, parse_mode='Markdown')
             return
         else:
-            await update.message.reply_text("❌ level, rc, boss, hunt, clan")
+            await update.message.reply_text("❌ Используйте: level, rc, boss, hunt, clan")
             return
+        
         if not users:
-            await update.message.reply_text("📋 Нет игроков")
+            await update.message.reply_text("📋 *Нет игроков*", parse_mode='Markdown')
             return
-        text = f"{title}\n"
+        
+        text = f"{title}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         for i, u in enumerate(users, 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            text += f"{medal} {u.username or f'ID:{u.user_id}'} — {val(u)}\n"
+            text += f"{medal} *{u.username or f'ID:{u.user_id}'}* — {val(u)}\n"
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in top: {e}")
@@ -1952,7 +2115,12 @@ async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user.is_admin = True
             user.is_blocked = False
             session.commit()
-            await update.message.reply_text("✅ Вы получили права администратора!", parse_mode='Markdown')
+            await update.message.reply_text(
+                "✅ *Вы получили права администратора!*\n\n"
+                "Теперь вам доступны команды управления Пустошью.\n"
+                "Используйте /help для списка админ-команд.",
+                parse_mode='Markdown'
+            )
         except Exception as e:
             logger.error(f"Error in admin_giveme: {e}")
             session.rollback()
@@ -1960,11 +2128,11 @@ async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             Session.remove()
     else:
-        await update.message.reply_text("❌ Неверный код!", parse_mode='Markdown')
+        await update.message.reply_text("❌ *Неверный код доступа!*", parse_mode='Markdown')
 
 async def admin_phase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if not context.args:
         await update.message.reply_text("❌ /phase 1/2/3")
@@ -1972,17 +2140,22 @@ async def admin_phase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         phase = int(context.args[0])
         if phase not in [1, 2, 3]:
-            await update.message.reply_text("❌ 1, 2 или 3")
+            await update.message.reply_text("❌ Фаза должна быть 1, 2 или 3")
             return
         context.bot_data['phase'] = phase
         phases = {1: "🟢 Мирная", 2: "🟡 Опасная", 3: "🔴 Апокалиптическая"}
-        await update.message.reply_text(f"🌍 Фаза изменена на {phases[phase]}", parse_mode='Markdown')
+        await update.message.reply_text(
+            f"🌍 *Фаза Пустоши изменена!*\n\n"
+            f"Теперь активна *{phases[phase]} фаза*.\n"
+            f"Пустошь ждёт новых героев!",
+            parse_mode='Markdown'
+        )
     except ValueError:
         await update.message.reply_text("❌ Введите число")
 
 async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 3:
         await update.message.reply_text("❌ /give @ник [сумма] {RC,RF,RCr}")
@@ -2010,12 +2183,15 @@ async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif resource == 'RCR':
             user.radcrystals += amount
         else:
-            await update.message.reply_text("❌ RC, RF или RCr")
+            await update.message.reply_text("❌ Используйте RC, RF или RCr")
             return
         session.commit()
-        await update.message.reply_text(f"✅ Выдано {amount} {resource} @{username}", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ *Выдано {amount} {resource} пользователю @{username}*", parse_mode='Markdown')
         try:
-            await context.bot.send_message(user.user_id, f"💰 Вам выдали {amount} {resource}!")
+            await context.bot.send_message(
+                chat_id=user.user_id,
+                text=f"💰 *Вам выдали {amount} {resource}!*"
+            )
         except:
             pass
     except Exception as e:
@@ -2027,7 +2203,7 @@ async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 3:
         await update.message.reply_text("❌ /take @ник [сумма] {RC,RF,RCr}")
@@ -2064,10 +2240,10 @@ async def admin_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             user.radcrystals -= amount
         else:
-            await update.message.reply_text("❌ RC, RF или RCr")
+            await update.message.reply_text("❌ Используйте RC, RF или RCr")
             return
         session.commit()
-        await update.message.reply_text(f"✅ Забрано {amount} {resource} у @{username}", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ *Забрано {amount} {resource} у @{username}*", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in admin_take: {e}")
         session.rollback()
@@ -2077,7 +2253,7 @@ async def admin_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 2:
         await update.message.reply_text("❌ /setlevel @ник [уровень]")
@@ -2089,7 +2265,7 @@ async def admin_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Введите число")
         return
     if level < 1 or level > MAX_LEVEL:
-        await update.message.reply_text(f"❌ 1-{MAX_LEVEL}")
+        await update.message.reply_text(f"❌ Уровень должен быть от 1 до {MAX_LEVEL}")
         return
     session = Session()
     try:
@@ -2101,7 +2277,7 @@ async def admin_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.level = level
         user.experience = get_exp_for_level(level)
         session.commit()
-        await update.message.reply_text(f"📈 @{username}: {old} → {level}", parse_mode='Markdown')
+        await update.message.reply_text(f"📈 *Уровень @{username} изменён:* {old} → {level}", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in admin_setlevel: {e}")
         session.rollback()
@@ -2111,7 +2287,7 @@ async def admin_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 1:
         await update.message.reply_text("❌ /reset @ник")
@@ -2157,7 +2333,7 @@ async def admin_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.clan_id:
             user.clan_id = None
         session.commit()
-        await update.message.reply_text(f"🔄 @{username} сброшен!", parse_mode='Markdown')
+        await update.message.reply_text(f"🔄 *Игрок @{username} полностью сброшен!*", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in admin_reset: {e}")
         session.rollback()
@@ -2167,16 +2343,16 @@ async def admin_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_cd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 2:
-        await update.message.reply_text("❌ /cd @ник [минуты] (0=сброс)")
+        await update.message.reply_text("❌ /cd @ник [минуты] (0 = сброс)")
         return
     username = context.args[0].lstrip('@')
     try:
         minutes = int(context.args[1])
         if minutes < 0:
-            await update.message.reply_text("❌ Неотрицательное число")
+            await update.message.reply_text("❌ Минуты не могут быть отрицательными")
             return
     except ValueError:
         await update.message.reply_text("❌ Введите число")
@@ -2189,10 +2365,10 @@ async def admin_cd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if minutes == 0:
             user.next_collection_time = None
-            await update.message.reply_text(f"✅ Кулдаун @{username} сброшен", parse_mode='Markdown')
+            await update.message.reply_text(f"✅ *Кулдаун @{username} сброшен*", parse_mode='Markdown')
         else:
             user.next_collection_time = datetime.now() + timedelta(minutes=minutes)
-            await update.message.reply_text(f"⏰ Кулдаун @{username} на {minutes} мин", parse_mode='Markdown')
+            await update.message.reply_text(f"⏰ *Кулдаун @{username} установлен на {minutes} минут*", parse_mode='Markdown')
         session.commit()
     except Exception as e:
         logger.error(f"Error in admin_cd: {e}")
@@ -2203,7 +2379,7 @@ async def admin_cd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_resethunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 1:
         await update.message.reply_text("❌ /resethunt @ник")
@@ -2217,7 +2393,7 @@ async def admin_resethunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         user.last_hunt = None
         session.commit()
-        await update.message.reply_text(f"✅ Кулдаун охоты @{username} сброшен", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ *Кулдаун охоты @{username} сброшен*", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in admin_resethunt: {e}")
         session.rollback()
@@ -2227,7 +2403,7 @@ async def admin_resethunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 4:
         await update.message.reply_text("❌ /item give/take @ник [предмет] [кол-во]")
@@ -2261,19 +2437,19 @@ async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user.weapon = 'rifle'
             elif item == 'ружье':
                 user.weapon = 'shotgun'
-            elif item == 'винтовка_гаусса':
+            elif item == 'гаусс':
                 user.weapon = 'gauss'
             elif item == 'металлоискатель':
                 user.detectors += count
-            elif item == 'броня_легкая':
+            elif item == 'броня1':
                 user.armor_type = 'light'
-            elif item == 'броня_утяжеленная':
+            elif item == 'броня2':
                 user.armor_type = 'heavy'
-            elif item == 'броня_тактическая':
+            elif item == 'броня3':
                 user.armor_type = 'tactical'
-            elif item == 'броня_тяжелая':
+            elif item == 'броня4':
                 user.armor_type = 'reinforced'
-            elif item == 'броня_силовая':
+            elif item == 'броня5':
                 user.armor_type = 'power'
             elif item == 'аптечка':
                 user.medkits = min(user.medkits + count, MAX_MEDKITS)
@@ -2287,7 +2463,7 @@ async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"❌ Неизвестный предмет: {item}")
                 return
             session.commit()
-            await update.message.reply_text(f"✅ Выдано {item} x{count} @{username}", parse_mode='Markdown')
+            await update.message.reply_text(f"✅ *Выдано {item} x{count} пользователю @{username}*", parse_mode='Markdown')
         elif action == 'take':
             if item == 'щит':
                 user.shield_until = None
@@ -2299,23 +2475,23 @@ async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user.weapon = None
             elif item == 'ружье':
                 user.weapon = None
-            elif item == 'винтовка_гаусса':
+            elif item == 'гаусс':
                 user.weapon = None
             elif item == 'металлоискатель':
                 user.detectors = max(0, user.detectors - count)
-            elif item == 'броня_легкая':
+            elif item == 'броня1':
                 if user.armor_type == 'light':
                     user.armor_type = None
-            elif item == 'броня_утяжеленная':
+            elif item == 'броня2':
                 if user.armor_type == 'heavy':
                     user.armor_type = None
-            elif item == 'броня_тактическая':
+            elif item == 'броня3':
                 if user.armor_type == 'tactical':
                     user.armor_type = None
-            elif item == 'броня_тяжелая':
+            elif item == 'броня4':
                 if user.armor_type == 'reinforced':
                     user.armor_type = None
-            elif item == 'броня_силовая':
+            elif item == 'броня5':
                 if user.armor_type == 'power':
                     user.armor_type = None
             elif item == 'аптечка':
@@ -2330,9 +2506,9 @@ async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"❌ Неизвестный предмет: {item}")
                 return
             session.commit()
-            await update.message.reply_text(f"✅ Забрано {item} x{count} у @{username}", parse_mode='Markdown')
+            await update.message.reply_text(f"✅ *Забрано {item} x{count} у @{username}*", parse_mode='Markdown')
         else:
-            await update.message.reply_text("❌ give или take")
+            await update.message.reply_text("❌ Действие должно быть give или take")
     except Exception as e:
         logger.error(f"Error in admin_item: {e}")
         session.rollback()
@@ -2353,30 +2529,34 @@ async def admin_pets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(username=username).first()
         if not user:
-            await update.message.reply_text(f"❌ @{username} не найден")
+            await update.message.reply_text(f"❌ Пользователь @{username} не найден!")
             return
+        valid_pets = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
         if action == 'give':
             pet_name = context.args[2].lower()
-            valid = ['овчарка', 'волк', 'алабай', 'рысь', 'пума', 'попугай', 'лис', 'кайот']
-            if pet_name not in valid:
-                await update.message.reply_text(f"❌ {', '.join(valid)}")
+            if pet_name not in valid_pets:
+                await update.message.reply_text(f"❌ Доступные питомцы: {', '.join(valid_pets)}")
                 return
             user.pet = pet_name
             session.commit()
-            await update.message.reply_text(f"🐾 Выдан {pet_name} @{username}")
+            await update.message.reply_text(f"🐾 *Выдан питомец {pet_name} пользователю @{username}*", parse_mode='Markdown')
             try:
-                await context.bot.send_message(user.user_id, f"🐾 Вам выдали питомца {pet_name}!")
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=f"🐾 *Вам выдали питомца {pet_name}!*"
+                )
             except:
                 pass
         elif action == 'take':
             if not user.pet:
                 await update.message.reply_text(f"❌ У @{username} нет питомца")
                 return
+            pet_name = user.pet
             user.pet = None
             session.commit()
-            await update.message.reply_text(f"🐾 Забран питомец у @{username}")
+            await update.message.reply_text(f"🐾 *Забран питомец {pet_name} у @{username}*", parse_mode='Markdown')
         else:
-            await update.message.reply_text("❌ give или take")
+            await update.message.reply_text("❌ Используйте give или take")
     except Exception as e:
         logger.error(f"Error in admin_pets: {e}")
         session.rollback()
@@ -2386,22 +2566,22 @@ async def admin_pets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     session = Session()
     try:
         users = session.query(User).order_by(User.level.desc()).all()
         if not users:
-            await update.message.reply_text("📋 Нет игроков", parse_mode='Markdown')
+            await update.message.reply_text("📋 *Нет зарегистрированных игроков*", parse_mode='Markdown')
             return
-        text = "👥 *Игроки*\n"
+        text = "👥 *Список всех игроков*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         for i, u in enumerate(users, 1):
             clan_name = "—"
             if u.clan_id:
                 clan = session.query(Clan).filter_by(id=u.clan_id).first()
                 if clan:
                     clan_name = clan.name
-            text += f"{i}. {u.username or f'ID:{u.user_id}'} — ур.{u.level}, RC:{u.radcoins:.0f}, 🏰{clan_name}\n"
+            text += f"{i}. *{u.username or f'ID:{u.user_id}'}* — ур.{u.level}, RC:{u.radcoins:.0f}, 🏰{clan_name}\n"
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in admin_players: {e}")
@@ -2411,16 +2591,16 @@ async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_manage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in SUPER_ADMIN_IDS:
-        await update.message.reply_text("❌ Только главный администратор")
+        await update.message.reply_text("❌ Только главный администратор может управлять админами!")
         return
     if len(context.args) < 2:
         await update.message.reply_text(
-            "👑 Управление админами\n"
-            "/admin add @ник — добавить\n"
-            "/admin remove @ник — удалить\n"
-            "/admin block @ник — заблокировать\n"
-            "/admin unblock @ник — разблокировать\n"
-            "/admin list — список",
+            "👑 *Управление администраторами*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/admin add @ник — добавить администратора\n"
+            "/admin remove @ник — удалить администратора\n"
+            "/admin block @ник — заблокировать администратора\n"
+            "/admin unblock @ник — разблокировать администратора\n"
+            "/admin list — список всех администраторов",
             parse_mode='Markdown'
         )
         return
@@ -2430,58 +2610,64 @@ async def admin_manage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(username=username).first()
         if not user:
-            await update.message.reply_text(f"❌ @{username} не найден")
+            await update.message.reply_text(f"❌ Пользователь @{username} не найден!")
             return
         if action == 'add':
             if user.is_admin:
-                await update.message.reply_text("❌ Уже админ")
+                await update.message.reply_text(f"❌ @{username} уже является администратором!")
                 return
             user.is_admin = True
             user.is_blocked = False
             session.commit()
-            await update.message.reply_text(f"✅ @{username} добавлен в админы")
+            await update.message.reply_text(f"✅ *@{username} добавлен в администраторы!*", parse_mode='Markdown')
             try:
-                await context.bot.send_message(user.user_id, "👑 Вы назначены администратором Пустоши!")
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=f"👑 *Поздравляем!* Вы назначены администратором Пустоши!"
+                )
             except:
                 pass
         elif action == 'remove':
             if not user.is_admin:
-                await update.message.reply_text("❌ Не админ")
+                await update.message.reply_text(f"❌ @{username} не является администратором!")
                 return
             user.is_admin = False
             user.is_blocked = False
             session.commit()
-            await update.message.reply_text(f"✅ @{username} удалён из админов")
+            await update.message.reply_text(f"✅ *@{username} удалён из администраторов!*", parse_mode='Markdown')
         elif action == 'block':
             if not user.is_admin:
-                await update.message.reply_text("❌ Не админ")
+                await update.message.reply_text(f"❌ @{username} не является администратором!")
                 return
             if user.user_id in SUPER_ADMIN_IDS:
-                await update.message.reply_text("❌ Нельзя заблокировать главного админа")
+                await update.message.reply_text(f"❌ Нельзя заблокировать главного администратора!")
                 return
             user.is_blocked = True
             session.commit()
-            await update.message.reply_text(f"✅ @{username} заблокирован")
+            await update.message.reply_text(f"✅ *@{username} заблокирован!* Админ-команды недоступны.", parse_mode='Markdown')
         elif action == 'unblock':
             if not user.is_admin:
-                await update.message.reply_text("❌ Не админ")
+                await update.message.reply_text(f"❌ @{username} не является администратором!")
                 return
             user.is_blocked = False
             session.commit()
-            await update.message.reply_text(f"✅ @{username} разблокирован")
+            await update.message.reply_text(f"✅ *@{username} разблокирован!*", parse_mode='Markdown')
         elif action == 'list':
             admins = session.query(User).filter(User.is_admin == True).all()
             if not admins:
-                await update.message.reply_text("📋 Нет админов")
+                await update.message.reply_text("📋 *Нет администраторов*", parse_mode='Markdown')
                 return
-            text = "👑 *Администраторы*\n"
+            text = "👑 *Список администраторов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             for i, a in enumerate(admins, 1):
-                status = "🔴" if a.is_blocked else "🟢"
+                status = "🔴 ЗАБЛОКИРОВАН" if a.is_blocked else "🟢 АКТИВЕН"
                 main = " (ГЛАВНЫЙ)" if a.user_id in SUPER_ADMIN_IDS else ""
-                text += f"{i}. {status} {a.username or f'ID:{a.user_id}'}{main}\n"
+                text += f"{i}. *{a.username or f'ID:{a.user_id}'}*{main}\n"
+                text += f"   📊 Статус: {status}\n"
+                text += f"   📊 Уровень: {a.level}\n"
+                text += f"   ☢️ RC: {a.radcoins:.0f}\n\n"
             await update.message.reply_text(text, parse_mode='Markdown')
         else:
-            await update.message.reply_text("❌ add/remove/block/unblock/list")
+            await update.message.reply_text("❌ Используйте: add, remove, block, unblock, list")
     except Exception as e:
         logger.error(f"Error in admin_manage: {e}")
         session.rollback()
@@ -2494,12 +2680,19 @@ async def admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         admins_list = session.query(User).filter(User.is_admin == True).all()
         if not admins_list:
-            await update.message.reply_text("📋 Нет администраторов", parse_mode='Markdown')
+            await update.message.reply_text("📋 *Нет активных администраторов*", parse_mode='Markdown')
             return
-        text = "👑 *Администраторы*\n"
+        text = "👑 *Администраторы Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         for i, a in enumerate(admins_list, 1):
             status = "🔴" if a.is_blocked else "🟢"
-            text += f"{i}. {status} {a.username or f'ID:{a.user_id}'}\n"
+            main = " (ГЛАВНЫЙ)" if a.user_id in SUPER_ADMIN_IDS else ""
+            text += f"{i}. {status} *{a.username or f'ID:{a.user_id}'}*{main}\n"
+        text += "\n💡 Администраторы могут:\n"
+        text += "• Выдавать/забирать ресурсы\n"
+        text += "• Менять фазу Пустоши\n"
+        text += "• Управлять игроками\n"
+        text += "• Создавать бэкапы\n"
+        text += "• Выдавать сундуки и питомцы"
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in admins: {e}")
@@ -2509,10 +2702,10 @@ async def admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if not context.args:
-        await update.message.reply_text("❌ /call [текст]")
+        await update.message.reply_text("❌ /call [текст] — отправить сообщение всем игрокам")
         return
     msg = ' '.join(context.args)
     admin = update.effective_user.first_name
@@ -2522,11 +2715,15 @@ async def call(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sent = 0
         for u in users:
             try:
-                await context.bot.send_message(u.user_id, f"📢 *Объявление*\n{msg}\n👑 {admin}", parse_mode='Markdown')
+                await context.bot.send_message(
+                    u.user_id,
+                    f"📢 *Объявление от администратора*\n\n{msg}\n\n👑 {admin}",
+                    parse_mode='Markdown'
+                )
                 sent += 1
             except:
                 pass
-        await update.message.reply_text(f"✅ Отправлено {sent} игрокам")
+        await update.message.reply_text(f"✅ *Рассылка завершена!*\n\n📨 Отправлено: {sent} игрокам", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in call: {e}")
         await update.message.reply_text("❌ Ошибка")
@@ -2535,7 +2732,7 @@ async def call(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def lscall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав")
+        await update.message.reply_text("❌ Нет прав!")
         return
     if len(context.args) < 2:
         await update.message.reply_text("❌ /lscall @ник [текст]")
@@ -2547,55 +2744,30 @@ async def lscall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(username=username).first()
         if not user:
-            await update.message.reply_text(f"❌ @{username} не найден")
+            await update.message.reply_text(f"❌ Пользователь @{username} не найден!")
             return
-        await context.bot.send_message(user.user_id, f"📨 *Личное сообщение*\n{msg}\n👑 {admin}", parse_mode='Markdown')
-        await update.message.reply_text(f"✅ Отправлено @{username}")
+        await context.bot.send_message(
+            user.user_id,
+            f"📨 *Личное сообщение от администратора*\n\n{msg}\n\n👑 {admin}",
+            parse_mode='Markdown'
+        )
+        await update.message.reply_text(f"✅ *Сообщение отправлено!*\n\n📨 Получатель: @{username}", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in lscall: {e}")
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
 
-# ==================== КОМАНДЫ: СОВЕТЫ ====================
-async def advice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📖 *Советы*\n/advice сбор — сбор ресурсов\n/advice охота — охота\n/advice магазин — магазин\n/advice крафт — крафт\n/advice обмен — обмен\n/advice казино — казино\n/advice питомцы — питомцы\n/advice кланы — кланы\n/advice аномалии — аномалии\n/advice уведомления — уведомления",
-        parse_mode='Markdown'
-    )
-
-async def advice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await advice(update, context)
-        return
-    topic = context.args[0].lower()
-    tips = {
-        'сбор': "🎲 СБОР: /collect — 30-120 мин. Находка: RC, опыт, редкие RF. Мутант может украсть до 50% (с щитом 10%). Камуфляж снижает шанс встречи до 1%.",
-        'охота': "🏹 ОХОТА: /hunt — раз в сутки (с кайотом/редуктором быстрее). Шансы: обрез 89/10/0.99/0.01, ружьё 75/20/4/1, гарпун 70/20/9/1, винтовка 50/30/15/5, Гаусса 40/25/20/15. Награда: 10/30/100/1000 RF + 50/100/250/500 опыта. Смерть от Босса или мутанта 3 ур.",
-        'магазин': "🛒 МАГАЗИН: /shop — броня, оружие, расходники. /buy [товар] [кол-во]. Броня: лёгкая(150)25%, утяжеленная(400)40%(10ур), тактическая(800)50%, тяжёлая(1500)60%(25ур), силовая(3000)75%(50ур). Оружие: ружьё(300), гарпун(500)(10ур), винтовка(5000)(25ур), Гаусса(20000)(50ур).",
-        'крафт': "🛠️ КРАФТ: /craft [предмет]. Аптечки: обычная(2RF)25%, усиленная(5RF+35RC)40%, про(10RF+100RC)60%, лег(25RF+350RC)80%. Оружие: гарпун(300RF+700RC), винтовка(250RF+3500RC). Броня: броня2(250RF+2700RC), броня3(800RF+6700RC). Тересса(100000RF+170000RC) — 100% выживаемость.",
-        'обмен': "💱 ОБМЕН: /exchange [количество]. 1RF=50RC, 10RF=550RC, 50RF=3000RC, 100RF=6500RC.",
-        'казино': "🎰 КАЗИНО: /casino [сумма]. 7% шанс выигрыша x25. Рискни!",
-        'питомцы': "🐾 ПИТОМЦЫ: 0.5% шанс встретить при сборе. /pet accept — приручить. Овчарка(+5%RF), волк(+10%выживаемость), алабай(+1%Босс), рысь(+10%RC), пума(+50%кристаллы), попугай(+40%опыт), лис(шанс встречи÷2), кайот(кулдаун÷2).",
-        'кланы': "🏰 КЛАНЫ: /clan create [название] (2ур,1000RC), /clan join [название] (1ур). Улучшения: коллектор(+1%RC), опыт(+5%опыт), удвоение(+1%шанс). Цена: 25+уровень×5 💎. Казна +1% в день +0.25% за участника.",
-        'аномалии': "🌪️ АНОМАЛИИ (3 фаза): Ловец(10%) — риск 90%, Добытчик(10%) — +30%RC, Склерозик(0.01%) — временно -1-5 уровня.",
-        'уведомления': "🔔 УВЕДОМЛЕНИЯ: /announce on — включить, /announce off — выключить. Бот напомнит, когда можно собирать или охотиться."
-    }
-    await send_to_private(update, context, tips.get(topic, "❌ Неизвестный раздел"))
-
-#================== КОМАНДЫ: АДМИНСКИЕ СКРЫТИЕ ====================
+# ==================== КОМАНДЫ: СКРЫТИЕ В ТОПАХ ====================
 async def admin_hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
         return
-    if len(context.args) < 1:
-        await update.message.reply_text("❌ /hide @ник — скрыть из топов\n/show @ник — показать")
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ /hide @ник — скрыть из топов\n/show @ник — показать в топах")
         return
     action = context.args[0].lower()
-    username = context.args[1].lstrip('@') if len(context.args) > 1 else None
-    if not username:
-        await update.message.reply_text("❌ Укажи пользователя")
-        return
+    username = context.args[1].lstrip('@')
     session = Session()
     try:
         user = session.query(User).filter_by(username=username).first()
@@ -2605,19 +2777,57 @@ async def admin_hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == 'hide':
             user.is_admin_visible = False
             session.commit()
-            await update.message.reply_text(f"✅ @{username} скрыт из топов", parse_mode='Markdown')
+            await update.message.reply_text(f"✅ *@{username} скрыт из таблицы лидеров*", parse_mode='Markdown')
         elif action == 'show':
             user.is_admin_visible = True
             session.commit()
-            await update.message.reply_text(f"✅ @{username} виден в топах", parse_mode='Markdown')
+            await update.message.reply_text(f"✅ *@{username} снова виден в таблице лидеров*", parse_mode='Markdown')
         else:
-            await update.message.reply_text("❌ hide или show")
+            await update.message.reply_text("❌ Используйте hide или show")
     except Exception as e:
         logger.error(f"Error in admin_hide: {e}")
         session.rollback()
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
+# ==================== КОМАНДЫ: СОВЕТЫ ====================
+async def advice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "📖 *Советы Старого сталкера*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Напиши `/advice` и слово:\n\n"
+        "🎲 `сбор` — как добывать ресурсы\n"
+        "🏹 `охота` — как охотиться на мутантов\n"
+        "🛒 `магазин` — что и зачем покупать\n"
+        "🛠️ `крафт` — что можно создать\n"
+        "💱 `обмен` — как менять фрагменты\n"
+        "🎰 `казино` — как испытать удачу\n"
+        "🐾 `питомцы` — как найти друга\n"
+        "🏰 `кланы` — как создать и развивать\n"
+        "🌪️ `аномалии` — что случается в Пустоши\n"
+        "🔔 `уведомления` — как не пропустить\n\n"
+        "Пример: `/advice охота`"
+    )
+    await send_to_private(update, context, text)
+
+async def advice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await advice(update, context)
+        return
+    topic = context.args[0].lower()
+    tips = {
+        'сбор': "🎲 *СБОР РЕСУРСОВ*\n\n/com/collect — идёшь в Пустошь. Ждать: 30-120 мин. С редуктором/кайотом — быстрее. Находка: RC + опыт. Редко: RF.\n\n⚠️ Мутант может напасть:\n• без камуфляжа — 10%\n• с камуфляжем — 1%\n• украдёт 50% добычи\n• со щитом — только 10%\n\n💡 Совет: щит и камуфляж — первая покупка.",
+        'охота': "🏹 *ОХОТА НА МУТАНТОВ*\n\n/com/hunt — обычно раз в сутки. С кайотом/редуктором — 12ч, с обоими — 6ч.\n\nШансы:\n• Обрез: 89/10/0.99/0.01%\n• Ружьё: 75/20/4/1%\n• Гарпун: 70/20/9/1%\n• Винтовка: 50/30/15/5%\n• Гаусса: 40/25/20/15%\n\nНаграда: 10/30/100/1000 RF + 50/100/250/500 опыта.\n\n⚠️ Босс и мутант 3 ур опасны! Без брони — 10% выжить. Броня 3 — 99%. Аптечка +25%.",
+        'магазин': "🛒 *МАГАЗИН ПУСТОШИ*\n\n/com/shop — всё за RC.\n\n🛡️ Щит (250) — потеря 50%→10% (7д)\n🎭 Камуфляж (1250) — шанс встречи 1% (7д)\n🥉 Броня1 (1000) — 25% выжить\n🥈 Броня2 (2500) — 40% (10ур)\n🥉 Броня3 (5000) — 50%\n🥈 Броня4 (10000) — 60% (25ур)\n🥇 Броня5 (25000) — 75% (50ур)\n\n/com/buy [товар] [кол-во] — купить.",
+        'крафт': "🛠️ *КРАФТ ПРЕДМЕТОВ*\n\n/com/craft [предмет]\n\n💊 Аптечки: обычная(2RF)25%, усиленная(5RF+35RC)40%, про(10RF+100RC)60%, лег(25RF+350RC)80%\n🎣 Гарпун: 300RF+700RC\n🔫 Винтовка: 250RF+3500RC\n🥈 Броня2: 250RF+2700RC\n🥇 Броня3: 800RF+6700RC\n✨ Тересса: 100000RF+170000RC (50ур) — 100% выживаемость.",
+        'обмен': "💱 *ОБМЕН ФРАГМЕНТОВ*\n\n/com/exchange [количество]\n\n1 RF = 50 RC\n10 RF = 550 RC (+50)\n50 RF = 3000 RC (+500)\n100 RF = 6500 RC (+1500)",
+        'казино': "🎰 *КАЗИНО*\n\n/com/casino [сумма]\n\nШанс выигрыша: 7%\nВыигрыш: x25 от ставки\nПроигрыш: 93%",
+        'питомцы': "🐾 *ПИТОМЦЫ*\n\nПри сборе — 0.5% шанс встретить. /com/pet accept — приручить.\n\n🐕 Овчарка: +5% RF\n🐺 Волк: +10% выживаемость\n🐕‍🦺 Алабай: +1% Босс\n🐈 Рысь: +10% RC\n🐆 Пума: +50% кристаллы\n🦜 Попугай: +40% опыт\n🦊 Лис: шанс встречи ÷2\n🐕 Кайот: кулдаун ÷2 (0.005%)",
+        'кланы': "🏰 *КЛАНЫ*\n\n/com/clan create [название] (2ур,1000RC)\n/com/clan join [название] (1ур)\n/com/clan info\n/com/clan invest [сумма]\n/com/clan up [коллектор/опыт/удвоение]\n/com/clan list\n/com/clan goodbye\n\nУлучшения: 25+уровень×5 💎\nКазна: +1% в день +0.25% за участника.",
+        'аномалии': "🌪️ *АНОМАЛИИ* (3 фаза)\n\nПри сборе может случиться:\n🕸️ Ловец (10%) — мутант заметит с вероятностью 90%\n💰 Добытчик (10%) — +30% к добыче RC\n🧠 Склерозик (0.01%) — уровень падает на 1-5 (временно)",
+        'уведомления': "🔔 *УВЕДОМЛЕНИЯ*\n\n/com/announce on — включить\n/com/announce off — выключить\n\nБот пришлёт сообщение, когда можно собирать или охотиться."
+    }
+    await send_to_private(update, context, tips.get(topic, "❌ Неизвестный раздел. Используйте /advice для списка."))
 
 # ==================== ЗАПУСК ====================
 def main():
@@ -2689,7 +2899,7 @@ def main():
     scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
     
-    logger.info("🌟 RadCoin Bot запущен!")
+    logger.info("🌟 RadCoin Bot запущен! Пустошь ждёт своих героев!")
     app.run_polling()
 
 if __name__ == '__main__':
