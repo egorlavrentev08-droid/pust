@@ -1,4 +1,3 @@
-ex
 import logging
 import random
 import json
