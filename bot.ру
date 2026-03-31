@@ -2255,6 +2255,7 @@ async def radion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Session.remove()
 
 async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправить сообщение всем игрокам через радио"""
     if not context.args:
         await update.message.reply_text("❌ /radio [текст]")
         return
@@ -2262,25 +2263,28 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if not user.radio_active:
-            await update.message.reply_text("❌ Радио не активировано! /radion [код]")
+            await update.message.reply_text("❌ Радио не активировано! Используйте /radion [код]")
             return
         if user.radio_banned:
             await update.message.reply_text("❌ Вы заблокированы в радио!")
             return
         
         msg = ' '.join(context.args)
-        if len(msg) > 500:
+        
+        # Проверка длины (200 символов)
+        if len(msg) > 200:
             await update.message.reply_text("❌ Сообщение не более 200 символов!")
             return
         
+        # Проверка частоты (1 минута)
         last_radio = context.user_data.get('last_radio')
         if last_radio and datetime.now() - last_radio < timedelta(minutes=1):
             remaining = timedelta(minutes=1) - (datetime.now() - last_radio)
-            minutes = remaining.seconds // 60
-            await update.message.reply_text(f"❌ Следующее сообщение через {minutes} минут!")
+            seconds = remaining.seconds
+            await update.message.reply_text(f"❌ Следующее сообщение через {seconds} секунд!")
             return
         
         context.user_data['last_radio'] = datetime.now()
@@ -2321,7 +2325,7 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logger.error(f"Error in radio: {e}")
-        await update.message.reply_text("❌ Ошибка")
+        await update.message.reply_text("❌ Ошибка при отправке радиосообщения")
     finally:
         Session.remove()
 
