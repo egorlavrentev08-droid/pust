@@ -1647,6 +1647,126 @@ async def clan_invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+async def clan_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Снять RC из казны (только лидер)"""
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ /clan withdraw [сумма]")
+        return
+    
+    try:
+        amount = int(context.args[1])
+        if amount <= 0:
+            await update.message.reply_text("❌ Положительная сумма")
+            return
+    except ValueError:
+        await update.message.reply_text("❌ Введите число")
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user or not user.clan_id:
+            await update.message.reply_text("❌ Вы не в клане")
+            return
+        
+        clan = session.query(Clan).filter_by(id=user.clan_id).first()
+        if not clan:
+            await update.message.reply_text("❌ Клан не найден")
+            return
+        
+        if clan.leader_id != user.user_id:
+            await update.message.reply_text("❌ Только лидер может снимать средства")
+            return
+        
+        if clan.treasury_coins < amount:
+            await update.message.reply_text(f"❌ В казне {clan.treasury_coins:.0f} RC")
+            return
+        
+        clan.treasury_coins -= amount
+        user.radcoins += amount
+        session.commit()
+        
+        await update.message.reply_text(
+            f"💰 *Снято {amount} RC из казны*\n\n"
+            f"🏰 Клан: {clan.name}\n"
+            f"📊 Остаток в казне: {clan.treasury_coins:.0f} RC",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in clan_withdraw: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+async def clan_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выдать RC участнику из казны (только лидер)"""
+    if len(context.args) < 3:
+        await update.message.reply_text("❌ /clan give @ник [сумма]")
+        return
+    
+    username = context.args[1].lstrip('@')
+    try:
+        amount = int(context.args[2])
+        if amount <= 0:
+            await update.message.reply_text("❌ Положительная сумма")
+            return
+    except ValueError:
+        await update.message.reply_text("❌ Введите число")
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user or not user.clan_id:
+            await update.message.reply_text("❌ Вы не в клане")
+            return
+        
+        clan = session.query(Clan).filter_by(id=user.clan_id).first()
+        if not clan:
+            await update.message.reply_text("❌ Клан не найден")
+            return
+        
+        if clan.leader_id != user.user_id:
+            await update.message.reply_text("❌ Только лидер может выдавать средства")
+            return
+        
+        target = session.query(User).filter_by(username=username).first()
+        if not target or target.clan_id != clan.id:
+            await update.message.reply_text(f"❌ @{username} не состоит в клане")
+            return
+        
+        if clan.treasury_coins < amount:
+            await update.message.reply_text(f"❌ В казне {clan.treasury_coins:.0f} RC")
+            return
+        
+        clan.treasury_coins -= amount
+        target.radcoins += amount
+        session.commit()
+        
+        await update.message.reply_text(
+            f"💰 *Выдано {amount} RC участнику @{username}*\n\n"
+            f"🏰 Клан: {clan.name}\n"
+            f"📊 Остаток в казне: {clan.treasury_coins:.0f} RC",
+            parse_mode='Markdown'
+        )
+        
+        # Уведомление участнику
+        try:
+            await context.bot.send_message(
+                target.user_id,
+                f"💰 *Вам выдали {amount} RC из казны клана {clan.name}!*",
+                parse_mode='Markdown'
+            )
+        except:
+            pass
+    except Exception as e:
+        logger.error(f"Error in clan_give: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
 async def clan_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text("❌ /clan up [коллектор/опыт/удвоение]")
