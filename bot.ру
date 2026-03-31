@@ -605,7 +605,7 @@ async def class_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
-async def my_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def class_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
@@ -3255,7 +3255,8 @@ def main():
     app.add_handler(CommandHandler("exchange", exchange))
     app.add_handler(CommandHandler("phase_info", phase_info))
     app.add_handler(CommandHandler("announce", announce))
-    app.add_handler(CommandHandler("class", my_class))
+    app.add_handler(CommandHandler("class_info", class_info))
+    app.add_handler(CommandHandler("class", class_command)) 
     
     # Магазин и предметы
     app.add_handler(CommandHandler("shop", shop))
