@@ -2243,8 +2243,8 @@ async def radion(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Теперь вы можете вещать на всю Пустошь командой:\n"
             "`/radio [текст]`\n\n"
             "📢 *Правила:*\n"
-            "• Не чаще 1 раза в 30 минут\n"
-            "• Не более 500 символов\n"
+            "• Не чаще 1 раза в 1 минуту\n"
+            "• Не более 200 символов\n"
             "• Запрещены оскорбления и спам",
             parse_mode='Markdown'
         )
@@ -2255,7 +2255,6 @@ async def radion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Session.remove()
 
 async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправить сообщение всем игрокам через радио"""
     if not context.args:
         await update.message.reply_text("❌ /radio [текст]")
         return
@@ -2266,7 +2265,7 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ /start")
             return
         if not user.radio_active:
-            await update.message.reply_text("❌ Радио не активировано! Используйте /radion [код]")
+            await update.message.reply_text("❌ Радио не активировано! /radion [код]")
             return
         if user.radio_banned:
             await update.message.reply_text("❌ Вы заблокированы в радио!")
@@ -2274,33 +2273,52 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         msg = ' '.join(context.args)
         if len(msg) > 500:
-            await update.message.reply_text("❌ Сообщение не более 500 символов!")
+            await update.message.reply_text("❌ Сообщение не более 200 символов!")
             return
         
         last_radio = context.user_data.get('last_radio')
-        if last_radio and datetime.now() - last_radio < timedelta(minutes=30):
-            remaining = timedelta(minutes=30) - (datetime.now() - last_radio)
+        if last_radio and datetime.now() - last_radio < timedelta(minutes=1):
+            remaining = timedelta(minutes=1) - (datetime.now() - last_radio)
             minutes = remaining.seconds // 60
             await update.message.reply_text(f"❌ Следующее сообщение через {minutes} минут!")
             return
         
         context.user_data['last_radio'] = datetime.now()
         
+        text = f"📻 *Радио Пустоши*\n\n🎙️ *Ведущий:* @{user.username}\n\n📢 {msg}"
+        
+        # Отправляем в личку всем игрокам
         users = session.query(User).all()
-        sent = 0
+        sent_private = 0
         for u in users:
             if u.notifications_enabled:
                 try:
-                    await context.bot.send_message(
-                        u.user_id,
-                        f"📻 *Радио Пустоши*\n\n🎙️ *Ведущий:* @{user.username}\n\n📢 {msg}\n\n💡 Сообщение отправлено через Радио Пустоши",
-                        parse_mode='Markdown'
-                    )
-                    sent += 1
+                    await context.bot.send_message(u.user_id, text, parse_mode='Markdown')
+                    sent_private += 1
                 except:
                     pass
         
-        await update.message.reply_text(f"✅ *Сообщение отправлено!*\n\n📨 Получателей: {sent}\n📻 Вещание успешно завершено.", parse_mode='Markdown')
+        # Отправляем в группы, где есть бот
+        sent_groups = 0
+        groups = set()
+        async for update_obj in context.application.get_updates():
+            if update_obj.message and update_obj.message.chat.type in ['group', 'supergroup']:
+                groups.add(update_obj.message.chat.id)
+        
+        for chat_id in groups:
+            try:
+                await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+                sent_groups += 1
+            except:
+                pass
+        
+        await update.message.reply_text(
+            f"✅ *Сообщение отправлено!*\n\n"
+            f"📨 В личку: {sent_private}\n"
+            f"👥 В группы: {sent_groups}\n"
+            f"📻 Вещание успешно завершено.",
+            parse_mode='Markdown'
+        )
     except Exception as e:
         logger.error(f"Error in radio: {e}")
         await update.message.reply_text("❌ Ошибка")
