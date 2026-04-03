@@ -1488,13 +1488,17 @@ async def clan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/clan join [название] — вступить (1ур)\n"
             "/clan info — информация\n"
             "/clan invest [сумма] — вложить RC\n"
+            "/clan withdraw [сумма] — снять RC (лидер)\n"
+            "/clan give @ник [сумма] — выдать RC участнику (лидер)\n"
             "/clan up [коллектор/опыт/удвоение] — улучшить\n"
             "/clan list — список кланов\n"
             "/clan goodbye — распустить (дважды)",
             parse_mode='Markdown'
         )
         return
+    
     action = context.args[0].lower()
+    
     if action == "create":
         await clan_create(update, context)
     elif action == "join":
@@ -1503,6 +1507,10 @@ async def clan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await clan_info(update, context)
     elif action == "invest":
         await clan_invest(update, context)
+    elif action == "withdraw":
+        await clan_withdraw(update, context)
+    elif action == "give":
+        await clan_give(update, context)
     elif action == "up":
         await clan_upgrade(update, context)
     elif action == "list":
@@ -1524,20 +1532,20 @@ async def clan_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if user.clan_id:
             await update.message.reply_text("❌ Вы уже в клане")
             return
         if user.level < 2:
-            await update.message.reply_text("❌ Нужен 2 уровень")
+            await update.message.reply_text("❌ Для создания клана нужен 2 уровень")
             return
         if user.radcoins < 1000:
-            await update.message.reply_text(f"❌ Нужно 1000 RC")
+            await update.message.reply_text(f"❌ Для создания клана нужно 1000 RC, у вас {user.radcoins:.0f}")
             return
         existing = session.query(Clan).filter_by(name=name).first()
         if existing:
-            await update.message.reply_text("❌ Клан уже существует")
+            await update.message.reply_text("❌ Клан с таким названием уже существует")
             return
         clan = Clan(name=name, leader_id=user.user_id)
         session.add(clan)
@@ -1562,7 +1570,7 @@ async def clan_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if user.clan_id:
             await update.message.reply_text("❌ Вы уже в клане")
@@ -1635,7 +1643,7 @@ async def clan_invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Клан не найден")
             return
         if user.radcoins < amount:
-            await update.message.reply_text(f"❌ Не хватает!")
+            await update.message.reply_text(f"❌ Не хватает! У вас {user.radcoins:.0f} RC")
             return
         user.radcoins -= amount
         clan.treasury_coins += amount
@@ -1654,7 +1662,6 @@ async def clan_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text("❌ /clan withdraw [сумма]")
         return
-    
     try:
         amount = int(context.args[1])
         if amount <= 0:
@@ -1663,31 +1670,25 @@ async def clan_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Введите число")
         return
-    
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user or not user.clan_id:
             await update.message.reply_text("❌ Вы не в клане")
             return
-        
         clan = session.query(Clan).filter_by(id=user.clan_id).first()
         if not clan:
             await update.message.reply_text("❌ Клан не найден")
             return
-        
         if clan.leader_id != user.user_id:
             await update.message.reply_text("❌ Только лидер может снимать средства")
             return
-        
         if clan.treasury_coins < amount:
             await update.message.reply_text(f"❌ В казне {clan.treasury_coins:.0f} RC")
             return
-        
         clan.treasury_coins -= amount
         user.radcoins += amount
         session.commit()
-        
         await update.message.reply_text(
             f"💰 *Снято {amount} RC из казны*\n\n"
             f"🏰 Клан: {clan.name}\n"
@@ -1706,7 +1707,6 @@ async def clan_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 3:
         await update.message.reply_text("❌ /clan give @ник [сумма]")
         return
-    
     username = context.args[1].lstrip('@')
     try:
         amount = int(context.args[2])
@@ -1716,44 +1716,35 @@ async def clan_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Введите число")
         return
-    
     session = Session()
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user or not user.clan_id:
             await update.message.reply_text("❌ Вы не в клане")
             return
-        
         clan = session.query(Clan).filter_by(id=user.clan_id).first()
         if not clan:
             await update.message.reply_text("❌ Клан не найден")
             return
-        
         if clan.leader_id != user.user_id:
             await update.message.reply_text("❌ Только лидер может выдавать средства")
             return
-        
         target = session.query(User).filter_by(username=username).first()
         if not target or target.clan_id != clan.id:
             await update.message.reply_text(f"❌ @{username} не состоит в клане")
             return
-        
         if clan.treasury_coins < amount:
             await update.message.reply_text(f"❌ В казне {clan.treasury_coins:.0f} RC")
             return
-        
         clan.treasury_coins -= amount
         target.radcoins += amount
         session.commit()
-        
         await update.message.reply_text(
             f"💰 *Выдано {amount} RC участнику @{username}*\n\n"
             f"🏰 Клан: {clan.name}\n"
             f"📊 Остаток в казне: {clan.treasury_coins:.0f} RC",
             parse_mode='Markdown'
         )
-        
-        # Уведомление участнику
         try:
             await context.bot.send_message(
                 target.user_id,
