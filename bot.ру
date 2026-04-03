@@ -777,37 +777,37 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rc_mult = 0
             rf_mult = 0
             exp_gain = random.randint(25, 50)
-            location_msg = "🏚️ *Военка*"
+            location_msg = "🏚️ *Военка* — вы обыскиваете ржавые контейнеры в поисках сундуков"
         elif location == 'city':
             rc_mult = 1.5
             rf_mult = 0.5
-            location_msg = "🏙️ *Город*"
+            location_msg = "🏙️ *Город* — вы бродите по пустынным улицам среди разрушенных небоскрёбов"
         elif location == 'wasteland':
             rf_mult = 1.5
             rc_mult = 0.7
-            location_msg = "🌄 *Пустошь*"
+            location_msg = "🌄 *Пустошь* — вы крадётесь по радиоактивным землям, ветер гоняет песок между руин"
         elif location == 'lab':
             exp_mult = 2
             rc_mult = 0.5
-            location_msg = "🧪 *Лаба*"
+            location_msg = "🧪 *Лаба* — вы исследуете заброшенную лабораторию, где когда-то проводили опасные эксперименты"
         elif location == 'forest':
             pet_mult = 2
             rc_mult = 0.8
             rf_mult = 0
             exp_gain = random.randint(30, 80)
-            location_msg = "🌲 *Лес*"
+            location_msg = "🌲 *Лес* — вы пробираетесь через густую чащу, где каждый куст может скрывать опасность или удачу"
         elif location == 'swamp':
             rc_mult = 2
             rf_mult = 0.5
-            location_msg = "🌊 *Болота*"
+            location_msg = "🌊 *Болота* — вы осторожно ступаете по зыбкой почве, над водой поднимается радиоактивный туман"
         elif location == 'market':
             rc_mult = 1.2
             rf_mult = 0
             chest_mult = 2
             exp_gain = random.randint(10, 30)
-            location_msg = "🎪 *Рынок*"
+            location_msg = "🎪 *Рынок* — вы бродите между ржавыми прилавками, выискивая что-то ценное среди хлама"
         else:
-            location_msg = "🌍 *Пустошь*"
+            location_msg = "🌍 *Пустошь* — вы отправляетесь в знакомые места, где когда-то уже находили добычу"
         
         # Аномалии
         anomaly_msg = ""
@@ -816,13 +816,13 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
             anomaly_roll = random.random()
             if anomaly_roll < 0.1:
                 base_rc = int(base_rc * 1.3)
-                anomaly_msg = "\n✨ *Аномалия ДОБЫТЧИК!* +30%! ✨"
+                anomaly_msg = "\n✨ *Аномалия ДОБЫТЧИК!* Вокруг всё начинает светиться зелёным, и добыча увеличивается на 30%! ✨"
             elif anomaly_roll < 0.2:
-                anomaly_msg = "\n🕸️ *Аномалия ЛОВЕЦ!* 🕸️"
+                anomaly_msg = "\n🕸️ *Аномалия ЛОВЕЦ!* Воздух становится тяжёлым, вы чувствуете, что за вами кто-то наблюдает... 🕸️"
             elif anomaly_roll < 0.2001:
                 reduction = random.randint(1, 5)
                 actual_level = max(1, actual_level - reduction)
-                anomaly_msg = f"\n🧠 *Аномалия СКЛЕРОЗИК!* -{reduction} уровня!"
+                anomaly_msg = f"\n🧠 *Аномалия СКЛЕРОЗИК!* Голова идёт кругом, вы временно теряете {reduction} уровней! 🧠"
         
         # Клановый бонус
         clan_bonus = 0
@@ -874,7 +874,7 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Бонус класса
         rc_gain, fragment_gain, exp_gain = apply_class_bonus(user, rc_gain, fragment_gain, exp_gain)
         
-        # Встреча с мутантом
+        # Встреча с мутантом (без кражи)
         meet_chance = 10
         if anomaly_msg and "ЛОВЕЦ" in anomaly_msg:
             meet_chance = 90
@@ -883,13 +883,11 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.pet == 'лис':
             meet_chance = meet_chance // 2 if meet_chance > 1 else 1
         
+        # Мутант просто пугает, но не крадёт
         lost_rc = 0
         if random.random() < meet_chance / 100:
-            loss_percent = 50
-            if shield_active:
-                loss_percent = 10
-            lost_rc = int(rc_gain * loss_percent / 100)
-            rc_gain -= lost_rc
+            lost_rc = 0
+            anomaly_msg += "\n😈 *МУТАНТ АТАКУЕТ!* Вы с трудом отбиваетесь, но успеваете сохранить всю добычу!"
         
         # Кристаллы
         crystal_gain = 0
@@ -956,51 +954,58 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         session.commit()
         
-        msg = f"🌄 {location_msg}\n\n🔍 +{rc_gain} RC, +{exp_gain} опыта"
+        msg = f"🌄 {location_msg}\n\n🔍 Вы находите **{rc_gain}** ☢️ *РадКоинов* и получаете **{exp_gain}** ⚠️ *опыта*!"
+        
         if multiplier > 1:
-            msg += f" ✨ x{multiplier}"
+            msg += f"\n✨ *УДАЧА!* Множитель x{multiplier}! Добыча увеличена! ✨"
         if fragment_gain > 0:
-            msg += f"\n☣️ +{fragment_gain} RF"
+            msg += f"\n☣️ *Вам везёт!* Вы находите **{fragment_gain}** РадФрагментов!"
         if lost_rc > 0:
-            msg += f"\n😈 Мутант украл {lost_rc} RC"
+            msg += f"\n😈 *МУТАНТ АТАКУЕТ!* Он крадёт {lost_rc} RC!"
         if crystal_gain > 0:
-            msg += f"\n💎 +{crystal_gain} RCr"
+            msg += f"\n💎 *Клановые кристаллы:* +{crystal_gain} RCr! Клановая копилка пополняется!"
         if level_up:
-            msg += f"\n🎉 УРОВЕНЬ {user.level}"
+            msg += f"\n🎉 *УРОВЕНЬ ПОВЫШЕН!* Теперь вы {user.level} уровень! Ваша сила растёт! 🎉"
         if anomaly_msg:
             msg += anomaly_msg
         if new_achievements:
-            msg += f"\n🏆 {', '.join(new_achievements)}"
+            msg += f"\n🏆 *Новые достижения:* {', '.join(new_achievements)}! Вы приближаетесь к легенде! 🏆"
+        
         if user.pet:
             pet_msgs = {
-                'овчарка': "🐕 Овчарка охраняет",
-                'волк': "🐺 Волк предупреждает",
-                'алабай': "🐕‍🦺 Алабай ведёт",
-                'рысь': "🐈 Рысь крадётся",
-                'пума': "🐆 Пума приносит кристаллы",
-                'попугай': "🦜 Попугай ускоряет",
-                'лис': "🦊 Лис скрывает",
-                'кайот': "🐕 Кайот ускоряет"
+                'овчарка': "🐕 *Ваша овчарка преданно бежит рядом, её чуткий нос помогает находить ценности в самых неожиданных местах!*",
+                'волк': "🐺 *Волк идёт впереди, его острый слух предупреждает вас об опасности за версту. С ним вы чувствуете себя увереннее!*",
+                'алабай': "🐕‍🦺 *Алабай уверенно ведёт вас через самые опасные тропы, его мощь внушает уважение даже мутантам!*",
+                'рысь': "🐈 *Рысь бесшумно крадётся впереди, её глаза замечают добычу первой. С ней вы никогда не уйдёте с пустыми руками!*",
+                'пума': "🐆 *Пума грациозно скользит между руин, принося удачу — клановые кристаллы сами находят вас в её присутствии!*",
+                'попугай': "🦜 *Попугай весело щебечет, сидя на плече, его болтовня ускоряет обучение — опыт приходит быстрее!*",
+                'лис': "🦊 *Лис хитро прищурился и крадётся в тени. Мутанты не замечают вас, пока он рядом!*",
+                'кайот': "🐕 *Кайот нетерпеливо повизгивает, его энергия передаётся вам — время до следующего сбора сократилось вдвое!*"
             }
-            msg += f"\n{pet_msgs.get(user.pet, '🐾 Питомец рядом')}"
+            msg += f"\n\n{pet_msgs.get(user.pet, '🐾 *Ваш верный питомец рядом, даря вам уверенность и удачу!*')}"
+        
         if pet_encounter:
-            msg += f"\n\n🐾 Встретили {pet_encounter}! /pet accept"
+            msg += f"\n\n🐾 *Вы встречаете {pet_encounter}!* Зверь смотрит на вас с надеждой и осторожностью. Возможно, он станет вашим верным спутником...\nИспользуйте `/pet accept` чтобы приручить."
             context.user_data['pending_pet'] = pet_encounter
-        msg += f"\n\n⏰ Следующий сбор через {interval//60}ч {interval%60}мин"
+        
+        next_hours = interval // 60
+        next_minutes = interval % 60
+        msg += f"\n\n⏰ *Пустошь восстановится через {next_hours}ч {next_minutes}мин.* Возвращайтесь за новой добычей!"
+        
         if chest_found:
-            msg += f"\n\n🎁 Нашли {chest_found}!"
+            msg += f"\n\n🎁 *Вы нашли {chest_found}!* Сундук тускло мерцает в свете радиоактивного зарева. Открыть его можно командой `/chest open`!"
         
         await update.message.reply_text(msg, parse_mode='Markdown')
         
         if user.notifications_enabled:
             scheduler.add_job(
-                lambda: context.bot.send_message(user.user_id, "🌄 Пустошь восстановилась! /collect"),
+                lambda: context.bot.send_message(user.user_id, "🌄 *Пустошь восстановилась!*\n\nРадиационный фон стабилизировался, можно снова отправляться на поиски ресурсов.\n\n🔔 Используйте `/collect`!"),
                 'date', run_date=user.next_collection_time
             )
     except Exception as e:
         logger.error(f"Error in collect: {e}")
         session.rollback()
-        await update.message.reply_text("❌ Ошибка")
+        await update.message.reply_text("❌ Ошибка при сборе ресурсов")
     finally:
         Session.remove()
 
