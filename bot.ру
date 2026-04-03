@@ -2845,10 +2845,10 @@ async def radion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = session.query(User).filter_by(user_id=update.effective_user.id).first()
         if not user:
-            await update.message.reply_text("❌ /start")
+            await update.message.reply_text("❌ Сначала /start")
             return
         if user.radio_active:
-            await update.message.reply_text("❌ Вы уже активировали радио!")
+            await update.message.reply_text("❌ Радио уже активировано!")
             return
         if user.radio_code != code:
             await update.message.reply_text("❌ Неверный код!")
@@ -2886,7 +2886,7 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Сначала /start")
             return
         if not user.radio_active:
-            await update.message.reply_text("❌ Радио не активировано! Используйте /radion [код]")
+            await update.message.reply_text("❌ Радио не активировано! /radion [код]")
             return
         if user.radio_banned:
             await update.message.reply_text("❌ Вы заблокированы в радио!")
@@ -2894,12 +2894,12 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         msg = ' '.join(context.args)
         
-        # Проверка длины (200 символов)
+        # Проверка длины
         if len(msg) > 200:
             await update.message.reply_text("❌ Сообщение не более 200 символов!")
             return
         
-        # Проверка частоты (1 минута)
+        # Проверка частоты
         last_radio = context.user_data.get('last_radio')
         if last_radio and datetime.now() - last_radio < timedelta(minutes=1):
             remaining = timedelta(minutes=1) - (datetime.now() - last_radio)
@@ -2909,18 +2909,17 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         context.user_data['last_radio'] = datetime.now()
         
-        text = f"📻 *Радио Пустоши*\n\n🎙️ *Ведущий:* @{user.username}\n\n📢 {msg}"
+        text = f"📻 *Радио Пустоши*\n\n🎙️ *Ведущий:* @{user.username}\n\n📢 {msg}\n\n💡 Сообщение отправлено через Радио Пустоши"
         
-        # Отправляем в личку всем игрокам
+        # Отправляем в личку ВСЕМ игрокам (не только с notifications_enabled)
         users = session.query(User).all()
         sent_private = 0
         for u in users:
-            if u.notifications_enabled:
-                try:
-                    await context.bot.send_message(u.user_id, text, parse_mode='Markdown')
-                    sent_private += 1
-                except:
-                    pass
+            try:
+                await context.bot.send_message(chat_id=u.user_id, text=text, parse_mode='Markdown')
+                sent_private += 1
+            except Exception as e:
+                logger.error(f"Не удалось отправить @{u.username}: {e}")
         
         # Отправляем в группы, где есть бот
         sent_groups = 0
@@ -2931,10 +2930,10 @@ async def radio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for chat_id in groups:
             try:
-                await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
                 sent_groups += 1
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Не удалось отправить в чат {chat_id}: {e}")
         
         await update.message.reply_text(
             f"✅ *Сообщение отправлено!*\n\n"
@@ -2962,6 +2961,23 @@ async def radio_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ *Уведомления от радио включены!*", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in radio_on: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+async def radio_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выключить уведомления от радио"""
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        user.notifications_enabled = False
+        session.commit()
+        await update.message.reply_text("❌ *Уведомления от радио выключены!*", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in radio_off: {e}")
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
@@ -3665,7 +3681,6 @@ async def admin_classes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
-
 async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
@@ -3681,7 +3696,9 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return
+    
     action = context.args[0].lower()
+    
     if action == 'give':
         if len(context.args) < 3:
             await update.message.reply_text("❌ /aradio give @ник [код]")
@@ -3692,7 +3709,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user = session.query(User).filter_by(username=username).first()
             if not user:
-                await update.message.reply_text("❌ Пользователь не найден")
+                await update.message.reply_text(f"❌ @{username} не найден")
                 return
             user.radio_code = code
             user.radio_active = False
@@ -3700,7 +3717,11 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.commit()
             await update.message.reply_text(f"✅ Радиодоступ выдан @{username} с кодом `{code}`", parse_mode='Markdown')
             try:
-                await context.bot.send_message(user.user_id, f"📻 *Вам выдан доступ к радио!*\n\n🔑 Код: `{code}`\n📝 /radion {code}", parse_mode='Markdown')
+                await context.bot.send_message(
+                    user.user_id,
+                    f"📻 *Вам выдан доступ к радио!*\n\n🔑 Код: `{code}`\n📝 Используйте: `/radion {code}`",
+                    parse_mode='Markdown'
+                )
             except:
                 pass
         except Exception as e:
@@ -3708,6 +3729,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка")
         finally:
             Session.remove()
+    
     elif action == 'take':
         if len(context.args) < 2:
             await update.message.reply_text("❌ /aradio take @ник")
@@ -3717,7 +3739,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user = session.query(User).filter_by(username=username).first()
             if not user:
-                await update.message.reply_text("❌ Пользователь не найден")
+                await update.message.reply_text(f"❌ @{username} не найден")
                 return
             user.radio_active = False
             user.radio_code = None
@@ -3728,6 +3750,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка")
         finally:
             Session.remove()
+    
     elif action == 'list':
         session = Session()
         try:
@@ -3745,6 +3768,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка")
         finally:
             Session.remove()
+    
     elif action == 'ban':
         if len(context.args) < 2:
             await update.message.reply_text("❌ /aradio ban @ник")
@@ -3754,7 +3778,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user = session.query(User).filter_by(username=username).first()
             if not user:
-                await update.message.reply_text("❌ Пользователь не найден")
+                await update.message.reply_text(f"❌ @{username} не найден")
                 return
             user.radio_banned = True
             session.commit()
@@ -3764,6 +3788,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка")
         finally:
             Session.remove()
+    
     elif action == 'unban':
         if len(context.args) < 2:
             await update.message.reply_text("❌ /aradio unban @ник")
@@ -3773,7 +3798,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user = session.query(User).filter_by(username=username).first()
             if not user:
-                await update.message.reply_text("❌ Пользователь не найден")
+                await update.message.reply_text(f"❌ @{username} не найден")
                 return
             user.radio_banned = False
             session.commit()
@@ -3783,6 +3808,7 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка")
         finally:
             Session.remove()
+    
     else:
         await update.message.reply_text("❌ Используйте: give, take, list, ban, unban")
 
