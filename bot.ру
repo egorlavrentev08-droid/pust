@@ -967,38 +967,14 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not user:
             await update.message.reply_text("❌ Сначала /start")
             return
-
-equipped = get_equipped(user)
-
-# Броня
-armor_type = None
-if equipped.get('armor'):
-    armor_map = {
-        'броня1': 'light', 'броня2': 'heavy', 'броня3': 'tactical',
-        'броня4': 'reinforced', 'броня5': 'power'
-    }
-    armor_type = armor_map.get(equipped['armor'])
-
-# Оружие
-weapon = None
-if equipped.get('weapon'):
-    weapon_map = {
-        'ружье': 'shotgun', 'гарпун': 'harpoon',
-        'винтовка': 'rifle', 'гаусс': 'gauss'
-    }
-    weapon = weapon_map.get(equipped['weapon'])
-
-# Щит и камуфляж
-shield_active = equipped.get('shield', False)
-camouflage_active = equipped.get('camouflage', False)
-
+        
         if user.level < 2:
             await update.message.reply_text("❌ *Охота доступна со 2 уровня*", parse_mode='Markdown')
             return
         
         phase = context.bot_data.get('phase', 1)
         if phase < 2:
-            await update.message.reply_text("❌ *Охота недоступна!* /phase 2", parse_mode='Markdown')
+            await update.message.reply_text("❌ *Охота недоступна!* Активируйте 2 фазу командой /phase 2", parse_mode='Markdown')
             return
         
         now = datetime.now()
@@ -1019,23 +995,55 @@ camouflage_active = equipped.get('camouflage', False)
             await update.message.reply_text(f"⏰ *Следующая охота через {hours}ч {minutes}мин.*", parse_mode='Markdown')
             return
         
-        # Определение оружия
-        weapon_name = "🗡️ Обрез"
-        weapon = user.weapon
-        chances = [89, 10, 0.99, 0.01]
+        # Получаем экипировку
+        equipped = get_equipped(user)
         
+        # Броня
+        armor_type = None
+        armor_name = "Нет брони"
+        if equipped.get('armor'):
+            armor_map = {
+                'броня1': 'light', 'броня2': 'heavy', 'броня3': 'tactical',
+                'броня4': 'reinforced', 'броня5': 'power'
+            }
+            armor_type = armor_map.get(equipped['armor'])
+            armor_names = {
+                'light': '🟢 Лёгкая броня', 'heavy': '🔵 Утяжеленная броня',
+                'tactical': '🟣 Тактическая броня', 'reinforced': '🟠 Тяжёлая броня',
+                'power': '🔴 Силовая броня'
+            }
+            armor_name = armor_names.get(armor_type, "Броня")
+        
+        # Оружие
+        weapon = None
+        weapon_name = "🗡️ Обрез"
+        if equipped.get('weapon'):
+            weapon_map = {
+                'ружье': 'shotgun', 'гарпун': 'harpoon',
+                'винтовка': 'rifle', 'гаусс': 'gauss'
+            }
+            weapon = weapon_map.get(equipped['weapon'])
+            weapon_names = {
+                'shotgun': '🔫 Ружьё', 'harpoon': '🎣 Гарпун',
+                'rifle': '🔫 Винтовка', 'gauss': '⚡ Винтовка Гаусса'
+            }
+            weapon_name = weapon_names.get(weapon, "🗡️ Обрез")
+        
+        # Щит и камуфляж
+        shield_active = equipped.get('shield', False)
+        camouflage_active = equipped.get('camouflage', False)
+        
+        # Определение шансов в зависимости от оружия
         if weapon == 'gauss':
-            weapon_name = "⚡ Винтовка Гаусса"
             chances = [40, 25, 20, 15]
         elif weapon == 'rifle':
-            weapon_name = "🔫 Винтовка"
             chances = [50, 30, 15, 5]
         elif weapon == 'harpoon':
-            weapon_name = "🎣 Гарпун"
             chances = [70, 20, 9, 1]
         elif weapon == 'shotgun':
-            weapon_name = "🔫 Ружьё"
             chances = [75, 20, 4, 1]
+        else:
+            chances = [89, 10, 0.99, 0.01]
         
         # Определение цели
         roll = random.random() * 100
@@ -1044,26 +1052,26 @@ camouflage_active = equipped.get('camouflage', False)
             reward_exp = 50
             target_level = 1
             target_name = "🧬 *Мутант 1 уровня*"
-            target_desc = "слабый, но опасный мутант"
+            target_desc = "неуклюжее, но опасное создание с длинными когтями"
         elif roll < chances[0] + chances[1]:
             reward_rf = 30
             reward_exp = 100
             target_level = 2
             target_name = "🧪 *Мутант 2 уровня*"
-            target_desc = "крепкий и агрессивный хищник"
+            target_desc = "крепкий хищник с толстой шкурой и острыми зубами"
         elif roll < chances[0] + chances[1] + chances[2]:
             reward_rf = 100
             reward_exp = 250
             target_level = 3
             target_name = "👾 *Мутант 3 уровня*"
-            target_desc = "мощный, покрытый броней зверь"
+            target_desc = "мощный зверь, покрытый костяными наростами, его рёв заставляет землю дрожать"
             user.mutants_lvl3 += 1
         else:
             reward_rf = 1000
             reward_exp = 500
             target_level = 4
             target_name = "👑 *БОСС ПУСТОШИ*"
-            target_desc = "легендарное чудовище"
+            target_desc = "легендарное чудовище, внушающее ужас одним своим видом, его чешуя не поддаётся обычному оружию"
             user.bosses_killed += 1
         
         user.mutants_killed += 1
@@ -1082,29 +1090,37 @@ camouflage_active = equipped.get('camouflage', False)
             reward_exp = int(reward_exp * 1.5)
             reward_rf = int(reward_rf * 1.25)
         
-        # Выживание
+        # Проверка выживания для мутанта 3 уровня и Босса
         if target_level >= 3:
             survive_chance = calculate_survive_chance(user, target_level)
+            
             if random.random() * 100 > survive_chance:
                 survived = False
                 if user.medkits > 0:
                     user.medkits -= 1
                     if random.random() * 100 <= survive_chance:
                         survived = True
-                        death_msg = "\n💊 *Аптечка спасла вас!*"
+                        death_msg = "\n💊 *Аптечка спасла вас!* Вы успели вколоть стимулятор и отойти на безопасное расстояние."
                 if not survived:
                     user.deaths += 1
-                    user.armor_type = None
-                    user.weapon = None
+                    # Снимаем всю экипировку
+                    equipped = get_equipped(user)
+                    if equipped.get('armor'):
+                        add_item_to_inventory(user, equipped['armor'], 1)
+                    if equipped.get('weapon'):
+                        add_item_to_inventory(user, equipped['weapon'], 1)
+                    if equipped.get('shield'):
+                        add_item_to_inventory(user, 'щит', 1)
+                    if equipped.get('camouflage'):
+                        add_item_to_inventory(user, 'камуфляж', 1)
+                    # Сбрасываем экипировку
+                    equipped = {'shield': False, 'camouflage': False, 'armor': None, 'weapon': None}
+                    save_equipped(user, equipped)
                     user.medkits = 0
                     user.detectors = 0
-                    if user.shield_until:
-                        user.shield_until -= timedelta(days=1)
-                    if user.camouflage_until:
-                        user.camouflage_until -= timedelta(days=1)
                     reward_rf = 0
                     reward_exp = 0
-                    death_msg = "\n💀 *ВЫ ПОГИБЛИ!* Броня, оружие и расходники потеряны."
+                    death_msg = "\n💀 *ВЫ ПОГИБЛИ!* Броня, оружие и расходники потеряны. Вы очнулись в лагере без снаряжения..."
         
         if survived:
             user.radfragments += reward_rf
@@ -1114,23 +1130,58 @@ camouflage_active = equipped.get('camouflage', False)
         check_achievements(user, session)
         session.commit()
         
+        # Формирование сообщения
         if survived:
             hours = cooldown.seconds // 3600
-            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon_name}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n*Вы победили!*\n\n💰 +{reward_rf} RF\n⚠️ +{reward_exp} опыта{death_msg}\n\n⏰ Следующая охота через {hours}ч"
+            if reward_rf == 1000:
+                msg = (
+                    f"🏹 *Охота в Пустоши*\n\n"
+                    f"Вы крадётесь по разрушенным зданиям с {weapon_name} в руках. Тишина давит на уши...\n\n"
+                    f"*Внезапно земля под ногами начинает дрожать!*\n"
+                    f"Из темноты выпрыгивает {target_name} — {target_desc}!\n\n"
+                    f"*Схватка была жестокой, но вы вышли победителем!*\n\n"
+                    f"💰 *Награда:* +{reward_rf} ☣️ РадФрагментов!\n"
+                    f"⚠️ *Опыт:* +{reward_exp}!\n"
+                    f"🛡️ *Броня:* {armor_name}\n"
+                    f"{death_msg}\n\n"
+                    f"⏰ *Следующая охота через {hours} часов.*"
+                )
+            else:
+                msg = (
+                    f"🏹 *Охота в Пустоши*\n\n"
+                    f"Вы крадётесь по руинам с {weapon_name}. Ветер гоняет песок между разрушенных стен.\n\n"
+                    f"Из переулка выпрыгивает {target_name} — {target_desc}!\n\n"
+                    f"*Вы победили!*\n\n"
+                    f"💰 *Награда:* +{reward_rf} ☣️ РадФрагментов!\n"
+                    f"⚠️ *Опыт:* +{reward_exp}!\n"
+                    f"🛡️ *Броня:* {armor_name}\n"
+                    f"{death_msg}\n\n"
+                    f"⏰ *Следующая охота через {hours} часов.*"
+                )
         else:
-            msg = f"🏹 *Охота в Пустоши*\n\nВы крадётесь с {weapon_name}...\nИз темноты выпрыгивает {target_name} — {target_desc}!\n{death_msg}"
+            msg = (
+                f"🏹 *Охота в Пустоши*\n\n"
+                f"Вы крадётесь по руинам с {weapon_name}. Ветер гоняет песок между разрушенных стен.\n\n"
+                f"*Из темноты выпрыгивает {target_name} — {target_desc}!*\n"
+                f"{death_msg}"
+            )
         
         await update.message.reply_text(msg, parse_mode='Markdown')
         
         if user.notifications_enabled:
             scheduler.add_job(
-                lambda: context.bot.send_message(user.user_id, "🏹 Звери проснулись! /hunt"),
+                lambda: context.bot.send_message(
+                    user.user_id, 
+                    "🏹 *Звери проснулись!*\n\n"
+                    "Мутанты снова активизировались. Пора отправляться на охоту!\n\n"
+                    "🔔 Используйте `/hunt`!"
+                ),
                 'date', run_date=now + cooldown
             )
     except Exception as e:
         logger.error(f"Error in hunt: {e}")
         session.rollback()
-        await update.message.reply_text("❌ Ошибка")
+        await update.message.reply_text("❌ Ошибка при выполнении охоты.")
     finally:
         Session.remove()
 
