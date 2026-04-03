@@ -3,6 +3,52 @@ import random
 import json
 import os
 import shutil
+# ==================== ИНВЕНТАРЬ (НОВЫЙ) ====================
+
+def get_inventory(user):
+    return json.loads(user.inventory) if user.inventory else []
+
+def save_inventory(user, inventory):
+    user.inventory = json.dumps(inventory)
+
+def get_equipped(user):
+    return json.loads(user.equipped) if user.equipped else {}
+
+def save_equipped(user, equipped):
+    user.equipped = json.dumps(equipped)
+
+def add_item_to_inventory(user, item_name, count=1, expires=None):
+    inventory = get_inventory(user)
+    for i in inventory:
+        if i['item'] == item_name:
+            i['count'] += count
+            if expires and 'expires' not in i:
+                i['expires'] = expires.isoformat() if expires else None
+            save_inventory(user, inventory)
+            return
+    new_item = {'item': item_name, 'count': count}
+    if expires:
+        new_item['expires'] = expires.isoformat()
+    inventory.append(new_item)
+    save_inventory(user, inventory)
+
+def remove_item_from_inventory(user, item_name, count=1):
+    inventory = get_inventory(user)
+    for i in inventory:
+        if i['item'] == item_name:
+            i['count'] -= count
+            if i['count'] <= 0:
+                inventory.remove(i)
+            save_inventory(user, inventory)
+            return True
+    return False
+
+def get_item_count(user, item_name):
+    inventory = get_inventory(user)
+    for i in inventory:
+        if i['item'] == item_name:
+            return i['count']
+    return 0
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import (
@@ -86,6 +132,8 @@ class User(Base):
     is_admin_visible = Column(Boolean, default=True)
     factories = Column(String, default='[]')  # JSON список {name, bought_at, last_collect}
     factory_bans = Column(String, default='[]')  # JSON список забаненных точек
+    inventory = Column(String, default='[]')      # JSON список предметов
+    equipped = Column(String, default='{}')       # JSON экипированных предметов
 
 class Clan(Base):
     __tablename__ = 'clans'
@@ -649,7 +697,11 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = User(user_id=user_id, username=username)
             session.add(user)
             session.commit()
-        
+equipped = get_equipped(user)
+
+# Щит и камуфляж
+shield_active = equipped.get('shield', False)
+camouflage_active = equipped.get('camouflage', False)
         now = datetime.now()
         if user.next_collection_time and now < user.next_collection_time:
             remaining = user.next_collection_time - now
@@ -763,7 +815,7 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.pet == 'овчарка':
             fragment_chance += 5
         if random.random() < fragment_chance / 100:
-            fragment_gain = random.randint(1, 5)
+            fragment_gain = random.randint(5, 10)
         fragment_gain = int(fragment_gain * rf_mult)
         
         # Металлоискатель
@@ -775,23 +827,6 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Бонус класса
         rc_gain, fragment_gain, exp_gain = apply_class_bonus(user, rc_gain, fragment_gain, exp_gain)
-        
-        # Встреча с мутантом
-        meet_chance = 10
-        if anomaly_msg and "ЛОВЕЦ" in anomaly_msg:
-            meet_chance = 90
-        if user.camouflage_until and user.camouflage_until > now:
-            meet_chance = 1
-        if user.pet == 'лис':
-            meet_chance = meet_chance // 2 if meet_chance > 1 else 1
-        
-        lost_rc = 0
-        if random.random() < meet_chance / 100:
-            loss_percent = 50
-            if user.shield_until and user.shield_until > now:
-                loss_percent = 10
-            lost_rc = int(rc_gain * loss_percent / 100)
-            rc_gain -= lost_rc
         
         # Кристаллы
         crystal_gain = 0
@@ -863,10 +898,6 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f" ✨ x{multiplier}"
         if fragment_gain > 0:
             msg += f"\n☣️ +{fragment_gain} RF"
-        if lost_rc > 0:
-            msg += f"\n😈 Мутант украл {lost_rc} RC"
-        if crystal_gain > 0:
-            msg += f"\n💎 +{crystal_gain} RCr"
         if level_up:
             msg += f"\n🎉 УРОВЕНЬ {user.level}"
         if anomaly_msg:
@@ -914,7 +945,31 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not user:
             await update.message.reply_text("❌ Сначала /start")
             return
-        
+
+equipped = get_equipped(user)
+
+# Броня
+armor_type = None
+if equipped.get('armor'):
+    armor_map = {
+        'броня1': 'light', 'броня2': 'heavy', 'броня3': 'tactical',
+        'броня4': 'reinforced', 'броня5': 'power'
+    }
+    armor_type = armor_map.get(equipped['armor'])
+
+# Оружие
+weapon = None
+if equipped.get('weapon'):
+    weapon_map = {
+        'ружье': 'shotgun', 'гарпун': 'harpoon',
+        'винтовка': 'rifle', 'гаусс': 'gauss'
+    }
+    weapon = weapon_map.get(equipped['weapon'])
+
+# Щит и камуфляж
+shield_active = equipped.get('shield', False)
+camouflage_active = equipped.get('camouflage', False)
+
         if user.level < 2:
             await update.message.reply_text("❌ *Охота доступна со 2 уровня*", parse_mode='Markdown')
             return
@@ -1205,54 +1260,54 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.radcoins -= total
         now = datetime.now()
         
-        if item == 'щит':
-            user.shield_until = now + timedelta(days=7)
-        elif item == 'камуфляж':
-            user.camouflage_until = now + timedelta(days=7)
-        elif item == 'металлоискатель':
-            user.detectors += count
-        elif item == 'аптечка':
-            user.medkits = min(user.medkits + count, MAX_MEDKITS)
-        elif item == 'энергетик':
-            user.energy_drink_until = now + timedelta(days=1)
-        elif item == 'редуктор':
-            user.cooldown_reducer_until = now + timedelta(days=3)
-        elif item == 'ружье':
-            user.weapon = 'shotgun'
-        elif item == 'гарпун':
-            if user.level < 10:
-                await update.message.reply_text("❌ Гарпун доступен с 10 уровня!")
-                return
-            user.weapon = 'harpoon'
-        elif item == 'винтовка':
-            if user.level < 25:
-                await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
-                return
-            user.weapon = 'rifle'
-        elif item == 'гаусс':
-            if user.level < 50:
-                await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
-                return
-            user.weapon = 'gauss'
-        elif item == 'броня1':
-            user.armor_type = 'light'
-        elif item == 'броня2':
-            if user.level < 10:
-                await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
-                return
-            user.armor_type = 'heavy'
-        elif item == 'броня3':
-            user.armor_type = 'tactical'
-        elif item == 'броня4':
-            if user.level < 25:
-                await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
-                return
-            user.armor_type = 'reinforced'
-        elif item == 'броня5':
-            if user.level < 50:
-                await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
-                return
-            user.armor_type = 'power'
+        if item_name == 'щит':
+    add_item_to_inventory(user, 'щит', count, now + timedelta(days=7))
+        elif item_name == 'камуфляж':
+    add_item_to_inventory(user, 'камуфляж', count, now + timedelta(days=7))
+        elif item_name == 'ружье':
+    add_item_to_inventory(user, 'ружье', count)
+        elif item_name == 'гарпун':
+    if user.level < 10:
+        await update.message.reply_text("❌ Гарпун доступен с 10 уровня!")
+        return
+    add_item_to_inventory(user, 'гарпун', count)
+        elif item_name == 'винтовка':
+    if user.level < 25:
+        await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
+        return
+    add_item_to_inventory(user, 'винтовка', count)
+        elif item_name == 'гаусс':
+    if user.level < 50:
+        await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
+        return
+    add_item_to_inventory(user, 'гаусс', count)
+        elif item_name == 'металлоискатель':
+    add_item_to_inventory(user, 'металлоискатель', count)
+        elif item_name == 'аптечка':
+    add_item_to_inventory(user, 'аптечка', count)
+        elif item_name == 'энергетик':
+    add_item_to_inventory(user, 'энергетик', count)
+        elif item_name == 'редуктор':
+    add_item_to_inventory(user, 'редуктор', count)
+        elif item_name == 'броня1':
+    add_item_to_inventory(user, 'броня1', count)
+        elif item_name == 'броня2':
+    if user.level < 10:
+        await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
+        return
+    add_item_to_inventory(user, 'броня2', count)
+        elif item_name == 'броня3':
+    add_item_to_inventory(user, 'броня3', count)
+        elif item_name == 'броня4':
+    if user.level < 25:
+        await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
+        return
+    add_item_to_inventory(user, 'броня4', count)
+        elif item_name == 'броня5':
+    if user.level < 50:
+        await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
+        return
+    add_item_to_inventory(user, 'броня5', count)
         
         user.total_purchases += count
         check_achievements(user, session)
@@ -1274,45 +1329,349 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ /start")
             return
         
-        text = "📦 *Инвентарь*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        if user.shield_until and user.shield_until > datetime.now():
-            text += f"🛡️ Щит — до {user.shield_until.strftime('%d.%m %H:%M')}\n"
-        if user.camouflage_until and user.camouflage_until > datetime.now():
-            text += f"🎭 Камуфляж — до {user.camouflage_until.strftime('%d.%m %H:%M')}\n"
-        if user.energy_drink_until and user.energy_drink_until > datetime.now():
-            text += f"⚡ Энергетик — до {user.energy_drink_until.strftime('%d.%m %H:%M')}\n"
-        if user.cooldown_reducer_until and user.cooldown_reducer_until > datetime.now():
-            text += f"⏱️ Редуктор — до {user.cooldown_reducer_until.strftime('%d.%m %H:%M')}\n"
+        inventory = get_inventory(user)
+        equipped = get_equipped(user)
+        
+        text = "📦 *Инвентарь*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        # Экипированные предметы
+        text += "*🟢 ЭКИПИРОВАНО*\n"
+        if equipped.get('shield'):
+            text += "🛡️ Щит — активен\n"
+        if equipped.get('camouflage'):
+            text += "🎭 Камуфляж — активен\n"
         
         armor_names = {
-            'light': '🟢 Лёгкая броня (25%)',
-            'heavy': '🔵 Утяжеленная броня (40%)',
-            'tactical': '🟣 Тактическая броня (50%)',
-            'reinforced': '🟠 Тяжёлая броня (60%)',
-            'power': '🔴 Силовая броня (75%)'
+            'light': '🟢 Лёгкая броня', 'heavy': '🔵 Утяжеленная броня',
+            'tactical': '🟣 Тактическая броня', 'reinforced': '🟠 Тяжёлая броня',
+            'power': '🔴 Силовая броня'
         }
+        if equipped.get('armor'):
+            armor = equipped['armor']
+            text += f"{armor_names.get(armor, armor)} — активна\n"
+        
         weapon_names = {
-            'shotgun': '🔫 Ружьё',
-            'harpoon': '🎣 Гарпун',
-            'rifle': '🔫 Винтовка',
-            'gauss': '⚡ Винтовка Гаусса'
+            'shotgun': '🔫 Ружьё', 'harpoon': '🎣 Гарпун',
+            'rifle': '🔫 Винтовка', 'gauss': '⚡ Винтовка Гаусса'
+        }
+        if equipped.get('weapon'):
+            weapon = equipped['weapon']
+            text += f"{weapon_names.get(weapon, weapon)} — экипировано\n"
+        
+        if not any([equipped.get('shield'), equipped.get('camouflage'), equipped.get('armor'), equipped.get('weapon')]):
+            text += "❌ Нет экипированных предметов\n"
+        
+        text += "\n*📦 ПРЕДМЕТЫ*\n"
+        inventory.sort(key=lambda x: x['item'])
+        
+        item_names = {
+            'щит': '🛡️ Щит', 'камуфляж': '🎭 Камуфляж',
+            'броня1': '🟢 Лёгкая броня', 'броня2': '🔵 Утяжеленная броня',
+            'броня3': '🟣 Тактическая броня', 'броня4': '🟠 Тяжёлая броня',
+            'броня5': '🔴 Силовая броня',
+            'ружье': '🔫 Ружьё', 'гарпун': '🎣 Гарпун', 'винтовка': '🔫 Винтовка',
+            'гаусс': '⚡ Винтовка Гаусса', 'металлоискатель': '🔎 Металлоискатель',
+            'аптечка': '💊 Аптечка', 'энергетик': '⚡ Энергетик', 'редуктор': '⏱️ Редуктор'
         }
         
-        if user.armor_type and user.armor_type in armor_names:
-            text += f"{armor_names[user.armor_type]} — активна\n"
-        if user.weapon and user.weapon in weapon_names:
-            text += f"{weapon_names[user.weapon]} — экипировано\n"
+        for item in inventory:
+            name = item['item']
+            count = item['count']
+            display_name = item_names.get(name, name)
+            expires = item.get('expires')
+            if expires:
+                exp_date = datetime.fromisoformat(expires)
+                if exp_date > datetime.now():
+                    text += f"{display_name} — {count} шт (до {exp_date.strftime('%d.%m %H:%M')})\n"
+                else:
+                    continue
+            else:
+                text += f"{display_name} — {count} шт\n"
         
-        text += f"\n💊 Аптечки: {user.medkits}/{MAX_MEDKITS}\n"
-        text += f"🔎 Металлоискатели: {user.detectors}\n"
-        if user.pet:
-            text += f"\n🐾 Питомец: {user.pet}\n"
-        if user.teressa:
-            text += f"\n✨ Тересса (100% выживаемость)\n"
+        if not inventory:
+            text += "❌ Инвентарь пуст\n"
+        
+        text += "\n💡 Команды:\n"
+        text += "/sell [предмет] [кол-во] — продать\n"
+        text += "/equip [тип] [название] — экипировать\n"
+        text += "/equip [тип] 0 — снять"
         
         await send_to_private(update, context, text)
     except Exception as e:
         logger.error(f"Error in inv: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove() 
+async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "💰 *Продажа предметов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/sell [предмет] — продать 1 шт\n"
+            "/sell [предмет] [кол-во] — продать N шт\n"
+            "/sell all [предмет] — продать все\n\n"
+            "Доступные предметы:\n"
+            "щит, камуфляж, броня1-5, ружье, гарпун, винтовка, гаусс,\n"
+            "металлоискатель, аптечка, энергетик, редуктор\n\n"
+            "💰 Комиссия: 20%",
+            parse_mode='Markdown'
+        )
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        item = context.args[0].lower()
+        count = 1
+        sell_all = False
+        
+        if len(context.args) > 1:
+            if context.args[1].lower() == 'all':
+                sell_all = True
+            else:
+                try:
+                    count = int(context.args[1])
+                    if count <= 0:
+                        await update.message.reply_text("❌ Положительное число")
+                        return
+                except ValueError:
+                    await update.message.reply_text("❌ Введите число")
+                    return
+        
+        sell_prices = {
+            'щит': 200, 'камуфляж': 1000,
+            'броня1': 800, 'броня2': 2000, 'броня3': 4000, 'броня4': 8000, 'броня5': 20000,
+            'ружье': 240, 'гарпун': 400, 'винтовка': 4000, 'гаусс': 16000,
+            'металлоискатель': 600, 'аптечка': 100, 'энергетик': 200, 'редуктор': 1000
+        }
+        
+        if item not in sell_prices:
+            await update.message.reply_text(f"❌ Неизвестный предмет: {item}")
+            return
+        
+        available = get_item_count(user, item)
+        if available == 0:
+            await update.message.reply_text(f"❌ У вас нет {item}")
+            return
+        
+        if sell_all:
+            count = available
+        elif count > available:
+            await update.message.reply_text(f"❌ У вас только {available} шт")
+            return
+        
+        remove_item_from_inventory(user, item, count)
+        total = sell_prices[item] * count
+        user.radcoins += total
+        session.commit()
+        
+        item_names = {
+            'щит': '🛡️ Щит', 'камуфляж': '🎭 Камуфляж',
+            'броня1': '🟢 Лёгкая броня', 'броня2': '🔵 Утяжеленная броня',
+            'броня3': '🟣 Тактическая броня', 'броня4': '🟠 Тяжёлая броня',
+            'броня5': '🔴 Силовая броня',
+            'ружье': '🔫 Ружьё', 'гарпун': '🎣 Гарпун', 'винтовка': '🔫 Винтовка',
+            'гаусс': '⚡ Винтовка Гаусса', 'металлоискатель': '🔎 Металлоискатель',
+            'аптечка': '💊 Аптечка', 'энергетик': '⚡ Энергетик', 'редуктор': '⏱️ Редуктор'
+        }
+        
+        await update.message.reply_text(
+            f"💰 *Продажа!*\n\n"
+            f"📦 {item_names.get(item, item)} x{count}\n"
+            f"💵 Получено: +{total} RC\n"
+            f"📊 Осталось: {user.radcoins:.0f} RC",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in sell: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+async def equip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "⚔️ *Экипировка*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/equip броня [название] — надеть броню\n"
+            "/equip броня 0 — снять броню\n"
+            "/equip оружие [название] — надеть оружие\n"
+            "/equip оружие 0 — снять оружие\n"
+            "/equip щит 1 — надеть щит\n"
+            "/equip щит 0 — снять щит\n"
+            "/equip камуфляж 1 — надеть камуфляж\n"
+            "/equip камуфляж 0 — снять камуфляж\n\n"
+            "Доступные предметы:\n"
+            "броня1-5, ружье, гарпун, винтовка, гаусс, щит, камуфляж",
+            parse_mode='Markdown'
+        )
+        return
+    
+    equip_type = context.args[0].lower()
+    value = context.args[1].lower()
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        inventory = get_inventory(user)
+        equipped = get_equipped(user)
+        
+        armor_map = {
+            'броня1': 'light', 'броня2': 'heavy', 'броня3': 'tactical',
+            'броня4': 'reinforced', 'броня5': 'power'
+        }
+        weapon_map = {
+            'ружье': 'shotgun', 'гарпун': 'harpoon', 'винтовка': 'rifle', 'гаусс': 'gauss'
+        }
+        
+        armor_names = {
+            'light': '🟢 Лёгкая броня', 'heavy': '🔵 Утяжеленная броня',
+            'tactical': '🟣 Тактическая броня', 'reinforced': '🟠 Тяжёлая броня',
+            'power': '🔴 Силовая броня'
+        }
+        weapon_names = {
+            'shotgun': '🔫 Ружьё', 'harpoon': '🎣 Гарпун',
+            'rifle': '🔫 Винтовка', 'gauss': '⚡ Винтовка Гаусса'
+        }
+        
+        # Броня
+        if equip_type == 'броня':
+            if value == '0':
+                old_armor = equipped.get('armor')
+                if old_armor:
+                    add_item_to_inventory(user, old_armor, 1)
+                    equipped['armor'] = None
+                    save_equipped(user, equipped)
+                    session.commit()
+                    await update.message.reply_text(f"✅ *Снята броня*\n\n{armor_names.get(old_armor, old_armor)} снята в инвентарь", parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("❌ У вас нет надетой брони")
+                return
+            
+            if value not in armor_map:
+                await update.message.reply_text("❌ Доступно: броня1-5")
+                return
+            
+            armor_db = armor_map[value]
+            if get_item_count(user, value) == 0:
+                await update.message.reply_text(f"❌ У вас нет {armor_names.get(armor_db, value)}")
+                return
+            
+            old_armor = equipped.get('armor')
+            if old_armor:
+                add_item_to_inventory(user, old_armor, 1)
+            
+            remove_item_from_inventory(user, value, 1)
+            equipped['armor'] = value
+            save_equipped(user, equipped)
+            session.commit()
+            
+            old_text = f"{armor_names.get(old_armor, old_armor)}" if old_armor else "ничего"
+            await update.message.reply_text(
+                f"✅ *Экипировано!*\n\n"
+                f"🛡️ {armor_names.get(armor_db, value)}\n"
+                f"📦 Прежнее снаряжение: {old_text}",
+                parse_mode='Markdown'
+            )
+        
+        # Оружие
+        elif equip_type == 'оружие':
+            if value == '0':
+                old_weapon = equipped.get('weapon')
+                if old_weapon:
+                    add_item_to_inventory(user, old_weapon, 1)
+                    equipped['weapon'] = None
+                    save_equipped(user, equipped)
+                    session.commit()
+                    await update.message.reply_text(f"✅ *Снято оружие*\n\n{weapon_names.get(old_weapon, old_weapon)} снято в инвентарь", parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("❌ У вас нет экипированного оружия")
+                return
+            
+            if value not in weapon_map:
+                await update.message.reply_text("❌ Доступно: ружье, гарпун, винтовка, гаусс")
+                return
+            
+            weapon_db = weapon_map[value]
+            if get_item_count(user, value) == 0:
+                await update.message.reply_text(f"❌ У вас нет {weapon_names.get(weapon_db, value)}")
+                return
+            
+            old_weapon = equipped.get('weapon')
+            if old_weapon:
+                add_item_to_inventory(user, old_weapon, 1)
+            
+            remove_item_from_inventory(user, value, 1)
+            equipped['weapon'] = value
+            save_equipped(user, equipped)
+            session.commit()
+            
+            old_text = f"{weapon_names.get(old_weapon, old_weapon)}" if old_weapon else "ничего"
+            await update.message.reply_text(
+                f"✅ *Экипировано!*\n\n"
+                f"⚔️ {weapon_names.get(weapon_db, value)}\n"
+                f"📦 Прежнее оружие: {old_text}",
+                parse_mode='Markdown'
+            )
+        
+        # Щит
+        elif equip_type == 'щит':
+            if value == '1':
+                if get_item_count(user, 'щит') == 0:
+                    await update.message.reply_text("❌ У вас нет щита")
+                    return
+                remove_item_from_inventory(user, 'щит', 1)
+                equipped['shield'] = True
+                save_equipped(user, equipped)
+                session.commit()
+                await update.message.reply_text("✅ *Щит надет!* Защита активирована на 7 дней", parse_mode='Markdown')
+            elif value == '0':
+                if equipped.get('shield'):
+                    equipped['shield'] = False
+                    add_item_to_inventory(user, 'щит', 1)
+                    save_equipped(user, equipped)
+                    session.commit()
+                    await update.message.reply_text("✅ *Щит снят!*", parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("❌ Щит не надет")
+            else:
+                await update.message.reply_text("❌ Используйте /equip щит 1 или /equip щит 0")
+        
+        # Камуфляж
+        elif equip_type == 'камуфляж':
+            if value == '1':
+                if get_item_count(user, 'камуфляж') == 0:
+                    await update.message.reply_text("❌ У вас нет камуфляжа")
+                    return
+                remove_item_from_inventory(user, 'камуфляж', 1)
+                equipped['camouflage'] = True
+                save_equipped(user, equipped)
+                session.commit()
+                await update.message.reply_text("✅ *Камуфляж надет!* Вы стали незаметнее для мутантов", parse_mode='Markdown')
+            elif value == '0':
+                if equipped.get('camouflage'):
+                    equipped['camouflage'] = False
+                    add_item_to_inventory(user, 'камуфляж', 1)
+                    save_equipped(user, equipped)
+                    session.commit()
+                    await update.message.reply_text("✅ *Камуфляж снят!*", parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("❌ Камуфляж не надет")
+            else:
+                await update.message.reply_text("❌ Используйте /equip камуфляж 1 или /equip камуфляж 0")
+        
+        else:
+            await update.message.reply_text("❌ Используйте: броня, оружие, щит, камуфляж")
+    
+    except Exception as e:
+        logger.error(f"Error in equip: {e}")
+        session.rollback()
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
@@ -4216,6 +4575,8 @@ def main():
     app.add_handler(CommandHandler("lscall", lscall))
     app.add_handler(CommandHandler("afactory", afactory))
     app.add_handler(CommandHandler("factory", factory))
+    app.add_handler(CommandHandler("sell", sell))
+    app.add_handler(CommandHandler("equip", equip))
     
     # Автобэкап
     scheduler.add_job(auto_backup, 'interval', hours=1)
