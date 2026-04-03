@@ -1273,6 +1273,7 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 🟣 *Тактическая броня* (5000) — 50% выжить\n"
         "• 🟠 *Тяжёлая броня* (10000) — 60% выжить (25 ур)\n"
         "• 🔴 *Силовая броня* (25000) — 75% выжить (50 ур)\n\n"
+        " Пример покупки /buy броня1 (любой уровень брони от 1 до 5)\n"
         "*⚔️ ОРУЖИЕ*\n"
         "• 🔫 *Ружьё* (300) — 75/20/4/1%\n"
         "• 🎣 *Гарпун* (500) — 70/20/9/1% (10 ур)\n"
@@ -1333,54 +1334,54 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.radcoins -= total
         now = datetime.now()
         
-        if item_name == 'щит':
-    add_item_to_inventory(user, 'щит', count, now + timedelta(days=7))
-        elif item_name == 'камуфляж':
-    add_item_to_inventory(user, 'камуфляж', count, now + timedelta(days=7))
-        elif item_name == 'ружье':
-    add_item_to_inventory(user, 'ружье', count)
-        elif item_name == 'гарпун':
-    if user.level < 10:
-        await update.message.reply_text("❌ Гарпун доступен с 10 уровня!")
-        return
-    add_item_to_inventory(user, 'гарпун', count)
-        elif item_name == 'винтовка':
-    if user.level < 25:
-        await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
-        return
-    add_item_to_inventory(user, 'винтовка', count)
-        elif item_name == 'гаусс':
-    if user.level < 50:
-        await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
-        return
-    add_item_to_inventory(user, 'гаусс', count)
-        elif item_name == 'металлоискатель':
-    add_item_to_inventory(user, 'металлоискатель', count)
-        elif item_name == 'аптечка':
-    add_item_to_inventory(user, 'аптечка', count)
-        elif item_name == 'энергетик':
-    add_item_to_inventory(user, 'энергетик', count)
-        elif item_name == 'редуктор':
-    add_item_to_inventory(user, 'редуктор', count)
-        elif item_name == 'броня1':
-    add_item_to_inventory(user, 'броня1', count)
-        elif item_name == 'броня2':
-    if user.level < 10:
-        await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
-        return
-    add_item_to_inventory(user, 'броня2', count)
-        elif item_name == 'броня3':
-    add_item_to_inventory(user, 'броня3', count)
-        elif item_name == 'броня4':
-    if user.level < 25:
-        await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
-        return
-    add_item_to_inventory(user, 'броня4', count)
-        elif item_name == 'броня5':
-    if user.level < 50:
-        await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
-        return
-    add_item_to_inventory(user, 'броня5', count)
+        if item == 'щит':
+            add_item_to_inventory(user, 'щит', count, now + timedelta(days=7))
+        elif item == 'камуфляж':
+            add_item_to_inventory(user, 'камуфляж', count, now + timedelta(days=7))
+        elif item == 'ружье':
+            add_item_to_inventory(user, 'ружье', count)
+        elif item == 'гарпун':
+            if user.level < 10:
+                await update.message.reply_text("❌ Гарпун доступен с 10 уровня!")
+                return
+            add_item_to_inventory(user, 'гарпун', count)
+        elif item == 'винтовка':
+            if user.level < 25:
+                await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
+                return
+            add_item_to_inventory(user, 'винтовка', count)
+        elif item == 'гаусс':
+            if user.level < 50:
+                await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
+                return
+            add_item_to_inventory(user, 'гаусс', count)
+        elif item == 'металлоискатель':
+            add_item_to_inventory(user, 'металлоискатель', count)
+        elif item == 'аптечка':
+            add_item_to_inventory(user, 'аптечка', count)
+        elif item == 'энергетик':
+            add_item_to_inventory(user, 'энергетик', count)
+        elif item == 'редуктор':
+            add_item_to_inventory(user, 'редуктор', count)
+        elif item == 'броня1':
+            add_item_to_inventory(user, 'броня1', count)
+        elif item == 'броня2':
+            if user.level < 10:
+                await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
+                return
+            add_item_to_inventory(user, 'броня2', count)
+        elif item == 'броня3':
+            add_item_to_inventory(user, 'броня3', count)
+        elif item == 'броня4':
+            if user.level < 25:
+                await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
+                return
+            add_item_to_inventory(user, 'броня4', count)
+        elif item == 'броня5':
+            if user.level < 50:
+                await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
+                return
+            add_item_to_inventory(user, 'броня5', count)
         
         user.total_purchases += count
         check_achievements(user, session)
