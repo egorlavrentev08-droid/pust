@@ -463,11 +463,14 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         db_user = session.query(User).filter_by(user_id=user.id).first()
         if not db_user:
-            await update.message.reply_text("❌ /start")
-            return
+            db_user = User(user_id=user.id, username=user.username)
+            session.add(db_user)
+            session.commit()
+        
         next_exp = get_exp_for_level(min(db_user.level + 1, MAX_LEVEL))
         exp_needed = max(0, next_exp - db_user.experience)
         
+        # Класс
         class_names = {
             'stalker': '🟢 Сталкер',
             'military': '🔫 Военный',
@@ -476,27 +479,69 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         class_name = class_names.get(db_user.user_class, '🟢 Сталкер')
         
-        armor_names = {
-            'light': '🟢 Лёгкая броня',
-            'heavy': '🔵 Утяжеленная броня',
-            'tactical': '🟣 Тактическая броня',
-            'reinforced': '🟠 Тяжёлая броня',
-            'power': '🔴 Силовая броня'
+        # Броня из экипировки
+        equipped = get_equipped(db_user)
+        armor_display = {
+            'light': '🟢 Лёгкая броня (25%)',
+            'heavy': '🔵 Утяжеленная броня (40%)',
+            'tactical': '🟣 Тактическая броня (50%)',
+            'reinforced': '🟠 Тяжёлая броня (60%)',
+            'power': '🔴 Силовая броня (75%)'
         }
+        armor_text = ""
+        if equipped.get('armor'):
+            armor = equipped['armor']
+            armor_text = f"\n🛡️ *Броня:* {armor_display.get(armor, armor)}"
         
-        text = f"👤 *{db_user.username}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n🎭 *Класс:* {class_name}\n☢️ *RC:* {db_user.radcoins:.0f}\n☣️ *RF:* {db_user.radfragments}\n⚠️ *Уровень:* {db_user.level}"
+        # Оружие из экипировки
+        weapon_display = {
+            'shotgun': '🔫 Ружьё',
+            'harpoon': '🎣 Гарпун',
+            'rifle': '🔫 Винтовка',
+            'gauss': '⚡ Винтовка Гаусса'
+        }
+        weapon_text = ""
+        if equipped.get('weapon'):
+            weapon = equipped['weapon']
+            weapon_text = f"\n⚔️ *Оружие:* {weapon_display.get(weapon, weapon)}"
+        
+        # Щит и камуфляж
+        shield_text = "\n🛡️ *Щит:* активен" if equipped.get('shield') else ""
+        camo_text = "\n🎭 *Камуфляж:* активен" if equipped.get('camouflage') else ""
+        
+        text = (
+            f"👤 *{db_user.username}*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎭 *Класс:* {class_name}\n"
+            f"☢️ *РадКоины:* {db_user.radcoins:.0f}\n"
+            f"☣️ *РадФрагменты:* {db_user.radfragments}\n"
+            f"⚠️ *Уровень:* {db_user.level}"
+        )
+        
         if db_user.level < MAX_LEVEL:
-            text += f" ({exp_needed} опыта)"
-        if db_user.armor_type and db_user.armor_type in armor_names:
-            text += f"\n🛡️ *Броня:* {armor_names[db_user.armor_type]}"
+            text += f" ({exp_needed} опыта до {db_user.level + 1} уровня)"
+        
+        text += armor_text
+        text += weapon_text
+        text += shield_text
+        text += camo_text
+        
         if db_user.pet:
-            text += f"\n🐾 *Питомец:* {db_user.pet}"
+            pet_names = {
+                'овчарка': '🐕 Овчарка', 'волк': '🐺 Волк', 'алабай': '🐕‍🦺 Алабай',
+                'рысь': '🐈 Рысь', 'пума': '🐆 Пума', 'попугай': '🦜 Попугай',
+                'лис': '🦊 Лис', 'кайот': '🐕 Кайот'
+            }
+            text += f"\n🐾 *Питомец:* {pet_names.get(db_user.pet, db_user.pet)}"
+        
         if db_user.clan_id:
             clan = session.query(Clan).filter_by(id=db_user.clan_id).first()
             if clan:
                 text += f"\n🏰 *Клан:* {clan.name}"
+        
         if db_user.teressa:
-            text += f"\n✨ *Артефакт:* Тересса"
+            text += f"\n✨ *Артефакт:* Тересса (100% выживаемость)"
+        
         await send_to_private(update, context, text)
     except Exception as e:
         logger.error(f"Error in profile: {e}")
@@ -1410,42 +1455,64 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Экипированные предметы
         text += "*🟢 ЭКИПИРОВАНО*\n"
-        if equipped.get('shield'):
-            text += "🛡️ Щит — активен\n"
-        if equipped.get('camouflage'):
-            text += "🎭 Камуфляж — активен\n"
         
-        armor_names = {
-            'light': '🟢 Лёгкая броня', 'heavy': '🔵 Утяжеленная броня',
-            'tactical': '🟣 Тактическая броня', 'reinforced': '🟠 Тяжёлая броня',
-            'power': '🔴 Силовая броня'
+        # Щит
+        if equipped.get('shield'):
+            text += "🛡️ *Щит* — активен\n"
+        
+        # Камуфляж
+        if equipped.get('camouflage'):
+            text += "🎭 *Камуфляж* — активен\n"
+        
+        # Броня
+        armor_display = {
+            'light': '🟢 *Лёгкая броня* (25% выжить)',
+            'heavy': '🔵 *Утяжеленная броня* (40% выжить)',
+            'tactical': '🟣 *Тактическая броня* (50% выжить)',
+            'reinforced': '🟠 *Тяжёлая броня* (60% выжить)',
+            'power': '🔴 *Силовая броня* (75% выжить)'
         }
         if equipped.get('armor'):
             armor = equipped['armor']
-            text += f"{armor_names.get(armor, armor)} — активна\n"
+            armor_name = armor_display.get(armor, f"❓ {armor}")
+            text += f"{armor_name} — активна\n"
         
-        weapon_names = {
-            'shotgun': '🔫 Ружьё', 'harpoon': '🎣 Гарпун',
-            'rifle': '🔫 Винтовка', 'gauss': '⚡ Винтовка Гаусса'
+        # Оружие
+        weapon_display = {
+            'shotgun': '🔫 *Ружьё* (75/20/4/1%)',
+            'harpoon': '🎣 *Гарпун* (70/20/9/1%)',
+            'rifle': '🔫 *Винтовка* (50/30/15/5%)',
+            'gauss': '⚡ *Винтовка Гаусса* (40/25/20/15%)'
         }
         if equipped.get('weapon'):
             weapon = equipped['weapon']
-            text += f"{weapon_names.get(weapon, weapon)} — экипировано\n"
+            weapon_name = weapon_display.get(weapon, f"❓ {weapon}")
+            text += f"{weapon_name} — экипировано\n"
         
         if not any([equipped.get('shield'), equipped.get('camouflage'), equipped.get('armor'), equipped.get('weapon')]):
             text += "❌ Нет экипированных предметов\n"
         
         text += "\n*📦 ПРЕДМЕТЫ*\n"
+        
+        # Сортируем по алфавиту
         inventory.sort(key=lambda x: x['item'])
         
         item_names = {
-            'щит': '🛡️ Щит', 'камуфляж': '🎭 Камуфляж',
-            'броня1': '🟢 Лёгкая броня', 'броня2': '🔵 Утяжеленная броня',
-            'броня3': '🟣 Тактическая броня', 'броня4': '🟠 Тяжёлая броня',
+            'щит': '🛡️ Щит',
+            'камуфляж': '🎭 Камуфляж',
+            'броня1': '🟢 Лёгкая броня',
+            'броня2': '🔵 Утяжеленная броня',
+            'броня3': '🟣 Тактическая броня',
+            'броня4': '🟠 Тяжёлая броня',
             'броня5': '🔴 Силовая броня',
-            'ружье': '🔫 Ружьё', 'гарпун': '🎣 Гарпун', 'винтовка': '🔫 Винтовка',
-            'гаусс': '⚡ Винтовка Гаусса', 'металлоискатель': '🔎 Металлоискатель',
-            'аптечка': '💊 Аптечка', 'энергетик': '⚡ Энергетик', 'редуктор': '⏱️ Редуктор'
+            'ружье': '🔫 Ружьё',
+            'гарпун': '🎣 Гарпун',
+            'винтовка': '🔫 Винтовка',
+            'гаусс': '⚡ Винтовка Гаусса',
+            'металлоискатель': '🔎 Металлоискатель',
+            'аптечка': '💊 Аптечка',
+            'энергетик': '⚡ Энергетик',
+            'редуктор': '⏱️ Редуктор'
         }
         
         for item in inventory:
@@ -1475,7 +1542,8 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in inv: {e}")
         await update.message.reply_text("❌ Ошибка")
     finally:
-        Session.remove() 
+        Session.remove()
+
 async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
