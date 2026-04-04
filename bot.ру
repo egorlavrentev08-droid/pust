@@ -1998,6 +1998,7 @@ async def clan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/clan give @ник [сумма] — выдать RC участнику (лидер)\n"
             "/clan up [коллектор/опыт/удвоение] — улучшить\n"
             "/clan list — список кланов\n"
+            "/clan players [название] — список участников\n"
             "/clan goodbye — распустить (дважды)",
             parse_mode='Markdown'
         )
@@ -2021,6 +2022,8 @@ async def clan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await clan_upgrade(update, context)
     elif action == "list":
         await clan_list(update, context)
+    elif action == "players":
+        await clan_players(update, context)
     elif action == "goodbye":
         await clan_goodbye(update, context)
     else:
@@ -2164,7 +2167,6 @@ async def clan_invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Session.remove()
 
 async def clan_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Снять RC из казны (только лидер)"""
     if len(context.args) < 2:
         await update.message.reply_text("❌ /clan withdraw [сумма]")
         return
@@ -2209,7 +2211,6 @@ async def clan_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Session.remove()
 
 async def clan_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выдать RC участнику из казны (только лидер)"""
     if len(context.args) < 3:
         await update.message.reply_text("❌ /clan give @ник [сумма]")
         return
@@ -2332,6 +2333,42 @@ async def clan_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error in clan_list: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+async def clan_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать список игроков в клане"""
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ /clan players [название клана]")
+        return
+    
+    clan_name = ' '.join(context.args)
+    session = Session()
+    try:
+        clan = session.query(Clan).filter_by(name=clan_name).first()
+        if not clan:
+            await update.message.reply_text(f"❌ Клан '{clan_name}' не найден!")
+            return
+        
+        members = session.query(User).filter_by(clan_id=clan.id).order_by(User.level.desc()).all()
+        if not members:
+            await update.message.reply_text(f"📋 В клане '{clan_name}' нет участников", parse_mode='Markdown')
+            return
+        
+        leader = session.query(User).filter_by(user_id=clan.leader_id).first()
+        
+        text = f"🏰 *{clan.name}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        text += f"👑 *Лидер:* @{leader.username if leader else '?'}\n"
+        text += f"👥 *Участников:* {len(members)}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for i, member in enumerate(members, 1):
+            role = "👑 Лидер" if member.user_id == clan.leader_id else "🔹 Участник"
+            text += f"{i}. *{member.username or f'ID:{member.user_id}'}* — {role} — {member.level} уровень\n"
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in clan_players: {e}")
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
