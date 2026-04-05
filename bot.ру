@@ -3,7 +3,7 @@ import random
 import json
 import os
 import shutil
-# ==================== ИНВЕНТАРЬ (НОВЫЙ) ====================
+# =================== ИНВЕНТАРЬ (НОВЫЙ) ====================
 
 def get_inventory(user):
     return json.loads(user.inventory) if user.inventory else []
