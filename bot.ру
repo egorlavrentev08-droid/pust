@@ -1237,7 +1237,7 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("🎰 /casino [сумма]\n7% выигрыш x25")
+        await update.message.reply_text("🎰 /casino [сумма]\n12% выигрыш x5")
         return
     try:
         bet = int(context.args[0])
@@ -1257,8 +1257,8 @@ async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Не хватает! У вас {user.radcoins:.0f} RC")
             return
         user.radcoins -= bet
-        if random.random() < 0.07:
-            win = bet * 25
+        if random.random() < 0.12:
+            win = bet * 5
             user.radcoins += win
             session.commit()
             await update.message.reply_text(f"🎰 ДЖЕКПОТ! +{win} RC! Баланс: {user.radcoins:.0f} RC", parse_mode='Markdown')
