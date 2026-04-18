@@ -1,18 +1,19 @@
 import logging
-from telegram.ext import Application, CommandHandler
+import os
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-# Импортируем настройки и базу данных
-from models import Base, engine, Session
+# Импортируем движок базы данных и модели
+from models import Base, engine, Session, init_db
 
-# Импортируем обработчики команд из наших будущих блоков
+# Импортируем блоки с логикой (убедись, что файлы созданы)
+import admin
 import economy
 import clans
 import games
 import inventory
 import world
 import classes
-import admin
 
 # Настройка логирования
 logging.basicConfig(
@@ -22,50 +23,56 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
-    # 1. Создаем таблицы в БД (если их нет)
-    Base.metadata.create_all(engine)
+    # 1. Инициализация базы данных
+    init_db()
 
-    # 2. Инициализируем планировщик для автобэкапов или кулдаунов
+    # 2. Настройка планировщика задач (для бэкапов и кулдаунов)
     scheduler = AsyncIOScheduler()
+    # Здесь можно добавить задачу на автобэкап, как в твоем старом коде
+    # scheduler.add_job(auto_backup, 'interval', hours=24)
     scheduler.start()
 
-    # 3. Настройка приложения бота
-    TOKEN = "8492718356:AAF4pqw8050Td9dzxz_HKFsCX2aYjuyiVzM"
+    # 3. Инициализация бота
+    TOKEN = "ТВОЙ_ТОКЕН_ЗДЕСЬ" # Вставь свой токен от @BotFather
     app = Application.builder().token(TOKEN).build()
 
-    # --- РЕГИСТРАЦИЯ КОМАНД ---
+    # ==================== РЕГИСТРАЦИЯ КОМАНД ====================
 
-    # Блок 2: Экономика
-    app.add_handler(CommandHandler("exchange", economy.exchange))
-    
-    # Блок 3: Кланы
+    # --- Блок: Профиль и Экономика ---
+    app.add_handler(CommandHandler("balance", economy.balance))
+    app.add_handler(CommandHandler("exchange", economy.exchange)) # Лимит 1кк RF внутри
+
+    # --- Блок: Кланы (Исправлено начисление кристаллов) ---
     app.add_handler(CommandHandler("clan", clans.clan_main))
-    
-    # Блок 4: Казино и игры
+
+    # --- Блок: Игры и Казино (Лимиты 100 - 100,000 RC) ---
     app.add_handler(CommandHandler("casino", games.casino))
-    
-    # Блок 5: Инвентарь и снаряжение
+
+    # --- Блок: Инвентарь и Предметы (Без камуфляжа, щита, металлоискателя) ---
     app.add_handler(CommandHandler("inv", inventory.show_inventory))
-    app.add_handler(CommandHandler("equip", inventory.equip_item))
-    app.add_handler(CommandHandler("use", inventory.use_item)) # Тут будут аптечки
-    
-    # Блок 6: Мир и Локации
+    app.add_handler(CommandHandler("use", inventory.use_item)) # Аптечка 25% шанс внутри
+
+    # --- Блок: Мир и Прогрессия (Без Болота и лока 36ч) ---
     app.add_handler(CommandHandler("locate", world.locate))
     app.add_handler(CommandHandler("factory", world.factory))
-    
-    # Блок 7: Ролевая система (Классы)
-    # ИЗМЕНЕНИЕ 9: Две версии команды
-    app.add_handler(CommandHandler("class_upd", classes.class_update_free))
-    app.add_handler(CommandHandler("class_pay", classes.class_update_paid))
-    
-    # Блок 8: Администрирование и Радио
-    # ИСПРАВЛЕНИЕ 1 и 2
+
+    # --- Блок: Ролевая система (Две версии команды) ---
+    app.add_handler(CommandHandler("class_upd", classes.class_update_free)) # Раз в неделю
+    app.add_handler(CommandHandler("class_pay", classes.class_update_paid)) # Платно (RF + RC)
+
+    # --- Блок: Администрирование (Исправлено Радио и выдача) ---
     app.add_handler(CommandHandler("give", admin.admin_give))
     app.add_handler(CommandHandler("radio", admin.radio_broadcast))
-    app.add_handler(CommandHandler("admin", admin.admin_panel))
+    app.add_handler(CommandHandler("take", admin.admin_take))
+    app.add_handler(CommandHandler("setlevel", admin.admin_setlevel))
+    app.add_handler(CommandHandler("reset", admin.admin_reset))
 
-    # Запуск бота
-    print("Бот запущен и готов к работе...")
+    # --- Обработка обычных сообщений (если нужна логика опыта за общение) ---
+    # app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, world.handle_message))
+
+    # ============================================================
+
+    print("--- Бот запущен (с учетом новых исправлений) ---")
     app.run_polling()
 
 if __name__ == '__main__':
