@@ -2,8 +2,11 @@
 # Версия: 2.0.0
 
 import json
-from datetime import datetime
-from core import logger, MAX_MEDKITS
+import random
+from datetime import datetime, timedelta
+
+# Импортируем из config, а не из core!
+from config import logger, MAX_MEDKITS, MAX_LEVEL
 from database import Session, User
 
 # ==================== ИНВЕНТАРЬ ====================
@@ -60,7 +63,7 @@ def get_item_count(user, item_name):
             return i['count']
     return 0
 
-# ==================== ДОСТУПНЫЕ ПРЕДМЕТЫ (после удаления) ====================
+# ==================== ДОСТУПНЫЕ ПРЕДМЕТЫ ====================
 # Броня: броня1, броня2, броня3, броня4, броня5
 # Оружие: ружье, гарпун, винтовка, гаусс
 # Расходники: аптечка, энергетик, редуктор
@@ -133,7 +136,7 @@ def check_achievements(user, session):
         new_achievements.append('кандидат')
     if user.level >= 50 and 'мастер' not in achievements:
         new_achievements.append('мастер')
-    if user.level >= 100 and 'легенда' not in achievements:
+    if user.level >= MAX_LEVEL and 'легенда' not in achievements:
         new_achievements.append('легенда')
     if user.daily_streak >= 7 and 'терпила' not in achievements:
         new_achievements.append('терпила')
@@ -151,19 +154,15 @@ def check_achievements(user, session):
         return new_achievements
     return []
 
-# ==================== ПРОВЕРКА АДМИНА ====================
+# ==================== ОПЫТ ДЛЯ УРОВНЯ ====================
 
-async def is_admin(update, context):
-    """Проверить, является ли пользователь администратором"""
-    user_id = update.effective_user.id
-    session = Session()
-    try:
-        user = session.query(User).filter_by(user_id=user_id).first()
-        if not user:
-            return False
-        return user.is_admin and not user.is_blocked
-    except Exception as e:
-        logger.error(f"Error checking admin: {e}")
-        return False
-    finally:
-        Session.remove()
+def get_exp_for_level(level):
+    """Опыт для повышения уровня"""
+    if level <= 1:
+        return 0
+    if level > MAX_LEVEL:
+        level = MAX_LEVEL
+    total = 0
+    for i in range(2, level + 1):
+        total += 100 + (i - 2) * 50
+    return total
