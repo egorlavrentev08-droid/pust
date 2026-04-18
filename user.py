@@ -247,3 +247,195 @@ async def phase_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     p = phases.get(phase, phases[1])
     text = f"🌍 *Фаза Пустоши: {p['name']}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n📖 {p['desc']}\n\n⚡ {p['bonus']}"
     await send_to_private(update, context, text)
+
+# ==================== КОМАНДЫ КЛАССОВ ====================
+
+async def class_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Смена класса"""
+    if not context.args:
+        await update.message.reply_text(
+            "🎭 *Смена класса*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Доступные классы:\n"
+            "🟢 `/class сталкер` — базовый\n"
+            "🔫 `/class военный` — +30% опыт, +20% RC, -30% RF\n"
+            "🗡️ `/class бандит` — +40% RF, +15% RC, -25% опыт\n"
+            "🔬 `/class ученый` — +50% опыт, +25% RF, -20% RC\n\n"
+            "💰 Смена класса: 100 RF или 10000 RC\n"
+            "🆓 Бесплатная смена раз в 7 дней (через /class upd)\n"
+            "💳 Платная смена: /class pay [название]",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Проверяем на pay и upd
+    if len(context.args) >= 2:
+        if context.args[0].lower() == 'pay':
+            await class_pay(update, context, context.args[1].lower())
+            return
+        elif context.args[0].lower() == 'upd':
+            await class_upd(update, context, context.args[1].lower())
+            return
+    
+    class_name = context.args[0].lower()
+    valid_classes = {'сталкер': 'stalker', 'военный': 'military', 'бандит': 'bandit', 'ученый': 'scientist'}
+    
+    if class_name not in valid_classes:
+        await update.message.reply_text("❌ Доступные классы: сталкер, военный, бандит, ученый")
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ Сначала /start")
+            return
+        
+        target_class = valid_classes[class_name]
+        if user.user_class == target_class:
+            await update.message.reply_text(f"❌ Вы уже {class_name}")
+            return
+        
+        now = datetime.now()
+        can_change_free = False
+        if user.last_free_class_change:
+            one_week_ago = now - timedelta(days=7)
+            if user.last_free_class_change < one_week_ago:
+                can_change_free = True
+        else:
+            can_change_free = True
+        
+        if can_change_free:
+            user.last_free_class_change = now
+            user.user_class = target_class
+            session.commit()
+            await update.message.reply_text(f"✅ *Класс изменён на {class_name} бесплатно!*\n\nСледующая бесплатная смена через 7 дней.", parse_mode='Markdown')
+        else:
+            await update.message.reply_text(
+                f"❌ *Бесплатная смена ещё недоступна!*\n\n"
+                f"💰 Сменить класс можно за:\n"
+                f"• 100 ☣️ РадФрагментов\n"
+                f"• 10000 ☢️ РадКоинов\n\n"
+                f"Для платной смены:\n"
+                f"`/class pay {class_name}`",
+                parse_mode='Markdown'
+            )
+    except Exception as e:
+        logger.error(f"Error in class_command: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+async def class_pay(update: Update, context: ContextTypes.DEFAULT_TYPE, class_name: str):
+    """Платная смена класса"""
+    valid_classes = {'сталкер': 'stalker', 'военный': 'military', 'бандит': 'bandit', 'ученый': 'scientist'}
+    
+    if class_name not in valid_classes:
+        await update.message.reply_text("❌ Доступные классы: сталкер, военный, бандит, ученый")
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        target_class = valid_classes[class_name]
+        if user.user_class == target_class:
+            await update.message.reply_text(f"❌ Вы уже {class_name}")
+            return
+        
+        # Проверяем ресурсы
+        if user.radfragments >= 100:
+            user.radfragments -= 100
+        elif user.radcoins >= 10000:
+            user.radcoins -= 10000
+        else:
+            await update.message.reply_text("❌ Не хватает ресурсов! Нужно 100 RF или 10000 RC")
+            return
+        
+        user.user_class = target_class
+        user.last_free_class_change = datetime.now()
+        session.commit()
+        
+        await update.message.reply_text(f"✅ *Класс изменён на {class_name} за плату!*", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in class_pay: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+async def class_upd(update: Update, context: ContextTypes.DEFAULT_TYPE, class_name: str):
+    """Бесплатная смена класса (раз в 7 дней)"""
+    valid_classes = {'сталкер': 'stalker', 'военный': 'military', 'бандит': 'bandit', 'ученый': 'scientist'}
+    
+    if class_name not in valid_classes:
+        await update.message.reply_text("❌ Доступные классы: сталкер, военный, бандит, ученый")
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        target_class = valid_classes[class_name]
+        if user.user_class == target_class:
+            await update.message.reply_text(f"❌ Вы уже {class_name}")
+            return
+        
+        now = datetime.now()
+        if user.last_free_class_change:
+            one_week_ago = now - timedelta(days=7)
+            if user.last_free_class_change >= one_week_ago:
+                remaining = user.last_free_class_change + timedelta(days=7) - now
+                hours = remaining.seconds // 3600
+                await update.message.reply_text(f"❌ Бесплатная смена будет доступна через {hours} часов!", parse_mode='Markdown')
+                return
+        
+        user.user_class = target_class
+        user.last_free_class_change = now
+        session.commit()
+        
+        await update.message.reply_text(f"✅ *Класс изменён на {class_name} бесплатно!*\n\nСледующая бесплатная смена через 7 дней.", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in class_upd: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+async def class_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Информация о текущем классе"""
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        class_name = user.user_class if hasattr(user, 'user_class') else 'stalker'
+        class_emoji = {'stalker': '🟢', 'military': '🔫', 'bandit': '🗡️', 'scientist': '🔬'}
+        class_stats = {
+            'stalker': '📊 Базовые значения',
+            'military': '⚡ +30% опыт, +20% RC, -30% RF',
+            'bandit': '⚡ +40% RF, +15% RC, -25% опыт',
+            'scientist': '⚡ +50% опыт, +25% RF, -20% RC'
+        }
+        
+        await update.message.reply_text(
+            f"🎭 *Ваш класс*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{class_emoji.get(class_name, '🟢')} *{class_name.capitalize()}*\n\n"
+            f"{class_stats.get(class_name, '')}\n\n"
+            f"💡 Сменить класс: `/class [название]`\n"
+            f"💰 Платная смена: `/class pay [название]`\n"
+            f"🆓 Бесплатная смена: `/class upd [название]` (раз в 7 дней)",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in class_info: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
