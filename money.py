@@ -1,0 +1,548 @@
+# money.py - Экономика и магазин
+# Версия: 2.0.0
+
+import random
+from datetime import datetime, timedelta
+from telegram import Update
+from telegram.ext import ContextTypes
+from core import logger, MAX_MEDKITS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT, CASINO_MIN_BET, CASINO_MAX_BET, send_to_private
+from database import Session, User
+from utils import get_inventory, get_equipped, get_item_count, add_item_to_inventory, remove_item_from_inventory, check_achievements
+
+# ==================== МАГАЗИН ====================
+
+async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать магазин"""
+    text = (
+        "🛒 *Магазин Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "💰 *Цены в РадКоинах (RC)*\n\n"
+        "*🛡️ БРОНЯ*\n"
+        "• 🟢 *Лёгкая броня* (1000) — 25% выжить\n"
+        "• 🔵 *Утяжеленная броня* (2500) — 40% выжить (10 ур)\n"
+        "• 🟣 *Тактическая броня* (5000) — 50% выжить\n"
+        "• 🟠 *Тяжёлая броня* (10000) — 60% выжить (25 ур)\n"
+        "• 🔴 *Силовая броня* (25000) — 75% выжить (50 ур)\n\n"
+        "*⚔️ ОРУЖИЕ*\n"
+        "• 🔫 *Ружьё* (300) — 75/20/4/1%\n"
+        "• 🎣 *Гарпун* (500) — 70/20/9/1% (10 ур)\n"
+        "• 🔫 *Винтовка* (5000) — 50/30/15/5% (25 ур)\n"
+        "• ⚡ *Винтовка Гаусса* (20000) — 40/25/20/15% (50 ур)\n\n"
+        "*💊 РАСХОДНИКИ*\n"
+        "• 💊 *Аптечка* (125) — +25% к шансу (макс 10)\n\n"
+        "*⚡ УСИЛЕНИЯ*\n"
+        "• ⚡ *Энергетик* (250) — +5 уровней на 1 сбор\n"
+        "• ⏱️ *Редуктор* (1250) — ускоряет восстановление (3д)\n\n"
+        "📝 */buy [товар] [кол-во]*"
+    )
+    await send_to_private(update, context, text)
+
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Купить предмет"""
+    if not context.args:
+        await update.message.reply_text("❌ /buy [товар] [кол-во]")
+        return
+    item = context.args[0].lower()
+    count = 1
+    if len(context.args) > 1:
+        try:
+            count = int(context.args[1])
+            if count <= 0 or count > 100:
+                await update.message.reply_text("❌ 1-100")
+                return
+        except ValueError:
+            await update.message.reply_text("❌ Введите число")
+            return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        prices = {
+            'аптечка': 125, 'энергетик': 250, 'редуктор': 1250,
+            'ружье': 300, 'гарпун': 500, 'винтовка': 5000, 'гаусс': 20000,
+            'броня1': 1000, 'броня2': 2500, 'броня3': 5000,
+            'броня4': 10000, 'броня5': 25000
+        }
+        
+        if item not in prices:
+            await update.message.reply_text(f"❌ Товар '{item}' не найден")
+            return
+        
+        total = prices[item] * count
+        if user.radcoins < total:
+            await update.message.reply_text(f"❌ Нужно {total} RC, у вас {user.radcoins:.0f}")
+            return
+        
+        user.radcoins -= total
+        now = datetime.now()
+        
+        if item == 'ружье':
+            add_item_to_inventory(user, 'ружье', count)
+        elif item == 'гарпун':
+            if user.level < 10:
+                await update.message.reply_text("❌ Гарпун доступен с 10 уровня!")
+                return
+            add_item_to_inventory(user, 'гарпун', count)
+        elif item == 'винтовка':
+            if user.level < 25:
+                await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
+                return
+            add_item_to_inventory(user, 'винтовка', count)
+        elif item == 'гаусс':
+            if user.level < 50:
+                await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
+                return
+            add_item_to_inventory(user, 'гаусс', count)
+        elif item == 'аптечка':
+            add_item_to_inventory(user, 'аптечка', count)
+        elif item == 'энергетик':
+            add_item_to_inventory(user, 'энергетик', count)
+        elif item == 'редуктор':
+            add_item_to_inventory(user, 'редуктор', count)
+        elif item == 'броня1':
+            add_item_to_inventory(user, 'броня1', count)
+        elif item == 'броня2':
+            if user.level < 10:
+                await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
+                return
+            add_item_to_inventory(user, 'броня2', count)
+        elif item == 'броня3':
+            add_item_to_inventory(user, 'броня3', count)
+        elif item == 'броня4':
+            if user.level < 25:
+                await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
+                return
+            add_item_to_inventory(user, 'броня4', count)
+        elif item == 'броня5':
+            if user.level < 50:
+                await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
+                return
+            add_item_to_inventory(user, 'броня5', count)
+        
+        user.total_purchases += count
+        check_achievements(user, session)
+        session.commit()
+        
+        await update.message.reply_text(f"✅ *Куплено {item} x{count}*\n💰 -{total} RC\n☢️ Осталось: {user.radcoins:.0f} RC", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in buy: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+# ==================== ПРОДАЖА ====================
+
+async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Продать предмет"""
+    if not context.args:
+        await update.message.reply_text(
+            "💰 *Продажа предметов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/sell [предмет] — продать 1 шт\n"
+            "/sell [предмет] [кол-во] — продать N шт\n"
+            "/sell all [предмет] — продать все\n\n"
+            "Доступные предметы:\n"
+            "броня1-5, ружье, гарпун, винтовка, гаусс,\n"
+            "аптечка, энергетик, редуктор\n\n"
+            "💰 Комиссия: 20%",
+            parse_mode='Markdown'
+        )
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        item = context.args[0].lower()
+        count = 1
+        sell_all = False
+        
+        if len(context.args) > 1:
+            if context.args[1].lower() == 'all':
+                sell_all = True
+            else:
+                try:
+                    count = int(context.args[1])
+                    if count <= 0:
+                        await update.message.reply_text("❌ Положительное число")
+                        return
+                except ValueError:
+                    await update.message.reply_text("❌ Введите число")
+                    return
+        
+        sell_prices = {
+            'броня1': 800, 'броня2': 2000, 'броня3': 4000, 'броня4': 8000, 'броня5': 20000,
+            'ружье': 240, 'гарпун': 400, 'винтовка': 4000, 'гаусс': 16000,
+            'аптечка': 100, 'энергетик': 200, 'редуктор': 1000
+        }
+        
+        if item not in sell_prices:
+            await update.message.reply_text(f"❌ Неизвестный предмет: {item}")
+            return
+        
+        available = get_item_count(user, item)
+        if available == 0:
+            await update.message.reply_text(f"❌ У вас нет {item}")
+            return
+        
+        if sell_all:
+            count = available
+        elif count > available:
+            await update.message.reply_text(f"❌ У вас только {available} шт")
+            return
+        
+        remove_item_from_inventory(user, item, count)
+        total = sell_prices[item] * count
+        user.radcoins += total
+        session.commit()
+        
+        item_names = {
+            'броня1': '🟢 Лёгкая броня', 'броня2': '🔵 Утяжеленная броня',
+            'броня3': '🟣 Тактическая броня', 'броня4': '🟠 Тяжёлая броня',
+            'броня5': '🔴 Силовая броня',
+            'ружье': '🔫 Ружьё', 'гарпун': '🎣 Гарпун', 'винтовка': '🔫 Винтовка',
+            'гаусс': '⚡ Винтовка Гаусса', 'аптечка': '💊 Аптечка',
+            'энергетик': '⚡ Энергетик', 'редуктор': '⏱️ Редуктор'
+        }
+        
+        await update.message.reply_text(
+            f"💰 *Продажа!*\n\n"
+            f"📦 {item_names.get(item, item)} x{count}\n"
+            f"💵 Получено: +{total} RC\n"
+            f"📊 Осталось: {user.radcoins:.0f} RC",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in sell: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+# ==================== ЭКИПИРОВКА ====================
+
+async def equip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Экипировать предметы"""
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "⚔️ *Экипировка*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/equip броня [название] — надеть броню\n"
+            "/equip броня 0 — снять броню\n"
+            "/equip оружие [название] — надеть оружие\n"
+            "/equip оружие 0 — снять оружие\n\n"
+            "Доступные предметы:\n"
+            "броня1-5, ружье, гарпун, винтовка, гаусс",
+            parse_mode='Markdown'
+        )
+        return
+    
+    equip_type = context.args[0].lower()
+    value = context.args[1].lower()
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        inventory = get_inventory(user)
+        equipped = get_equipped(user)
+        
+        armor_names = {
+            'броня1': '🟢 Лёгкая броня', 'броня2': '🔵 Утяжеленная броня',
+            'броня3': '🟣 Тактическая броня', 'броня4': '🟠 Тяжёлая броня',
+            'броня5': '🔴 Силовая броня'
+        }
+        weapon_names = {
+            'ружье': '🔫 Ружьё', 'гарпун': '🎣 Гарпун',
+            'винтовка': '🔫 Винтовка', 'гаусс': '⚡ Винтовка Гаусса'
+        }
+        
+        # Броня
+        if equip_type == 'броня':
+            if value == '0':
+                old_armor = equipped.get('armor')
+                if old_armor:
+                    add_item_to_inventory(user, old_armor, 1)
+                    equipped['armor'] = None
+                    save_equipped(user, equipped)
+                    session.commit()
+                    await update.message.reply_text(f"✅ *Снята броня*\n\n{armor_names.get(old_armor, old_armor)} снята", parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("❌ Нет надетой брони")
+                return
+            
+            if value not in armor_names:
+                await update.message.reply_text("❌ Доступно: броня1-5")
+                return
+            
+            if get_item_count(user, value) == 0:
+                await update.message.reply_text(f"❌ У вас нет {armor_names.get(value, value)}")
+                return
+            
+            old_armor = equipped.get('armor')
+            if old_armor:
+                add_item_to_inventory(user, old_armor, 1)
+            
+            remove_item_from_inventory(user, value, 1)
+            equipped['armor'] = value
+            save_equipped(user, equipped)
+            session.commit()
+            
+            old_text = f"{armor_names.get(old_armor, old_armor)}" if old_armor else "ничего"
+            await update.message.reply_text(
+                f"✅ *Экипировано!*\n\n"
+                f"🛡️ {armor_names.get(value, value)}\n"
+                f"📦 Прежнее: {old_text}",
+                parse_mode='Markdown'
+            )
+        
+        # Оружие
+        elif equip_type == 'оружие':
+            if value == '0':
+                old_weapon = equipped.get('weapon')
+                if old_weapon:
+                    add_item_to_inventory(user, old_weapon, 1)
+                    equipped['weapon'] = None
+                    save_equipped(user, equipped)
+                    session.commit()
+                    await update.message.reply_text(f"✅ *Снято оружие*\n\n{weapon_names.get(old_weapon, old_weapon)} снято", parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("❌ Нет экипированного оружия")
+                return
+            
+            if value not in weapon_names:
+                await update.message.reply_text("❌ Доступно: ружье, гарпун, винтовка, гаусс")
+                return
+            
+            if get_item_count(user, value) == 0:
+                await update.message.reply_text(f"❌ У вас нет {weapon_names.get(value, value)}")
+                return
+            
+            old_weapon = equipped.get('weapon')
+            if old_weapon:
+                add_item_to_inventory(user, old_weapon, 1)
+            
+            remove_item_from_inventory(user, value, 1)
+            equipped['weapon'] = value
+            save_equipped(user, equipped)
+            session.commit()
+            
+            old_text = f"{weapon_names.get(old_weapon, old_weapon)}" if old_weapon else "ничего"
+            await update.message.reply_text(
+                f"✅ *Экипировано!*\n\n"
+                f"⚔️ {weapon_names.get(value, value)}\n"
+                f"📦 Прежнее: {old_text}",
+                parse_mode='Markdown'
+            )
+        
+        else:
+            await update.message.reply_text("❌ Используйте: броня, оружие")
+    
+    except Exception as e:
+        logger.error(f"Error in equip: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+# ==================== КАЗИНО ====================
+
+async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Казино с настраиваемыми шансами"""
+    if not context.args:
+        await update.message.reply_text(f"🎰 /casino [сумма]\n💰 Ставка от {CASINO_MIN_BET} до {CASINO_MAX_BET} RC")
+        return
+    
+    try:
+        bet = int(context.args[0])
+        if bet < CASINO_MIN_BET or bet > CASINO_MAX_BET:
+            await update.message.reply_text(f"❌ Ставка от {CASINO_MIN_BET} до {CASINO_MAX_BET} RC")
+            return
+    except ValueError:
+        await update.message.reply_text("❌ Введите число")
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        if user.radcoins < bet:
+            await update.message.reply_text(f"❌ Не хватает! У вас {user.radcoins:.0f} RC")
+            return
+        
+        # Берём настройки казино: сначала персональные, потом публичные
+        chance = user.casino_chance if user.casino_chance is not None else CASINO_PUBLIC_CHANCE
+        mult = user.casino_cash_mult if user.casino_cash_mult is not None else CASINO_PUBLIC_CASH_MULT
+        
+        user.radcoins -= bet
+        
+        if random.random() < chance / 100:
+            win = bet * mult
+            user.radcoins += win
+            session.commit()
+            await update.message.reply_text(
+                f"🎰 *ДЖЕКПОТ!*\n\n"
+                f"💰 +{win} RC!\n"
+                f"🎲 Шанс: {chance}%\n"
+                f"✨ Множитель: x{mult}\n"
+                f"📊 Баланс: {user.radcoins:.0f} RC",
+                parse_mode='Markdown'
+            )
+        else:
+            session.commit()
+            await update.message.reply_text(
+                f"💀 *Проигрыш!*\n\n"
+                f"📉 -{bet} RC\n"
+                f"🎲 Шанс: {chance}%\n"
+                f"📊 Баланс: {user.radcoins:.0f} RC",
+                parse_mode='Markdown'
+            )
+    except Exception as e:
+        logger.error(f"Error in casino: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+# ==================== ОБМЕН ====================
+
+async def exchange(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обмен фрагментов на коины (лимит 1 000 000 RF)"""
+    if not context.args:
+        await update.message.reply_text("💱 /exchange [количество]\n📊 1 RF = 50 RC + бонусы\n⚠️ Лимит: 1 000 000 RF за раз")
+        return
+    
+    try:
+        amount = int(context.args[0])
+        if amount <= 0:
+            await update.message.reply_text("❌ Положительное число")
+            return
+        if amount > 1000000:
+            await update.message.reply_text("❌ Лимит 1 000 000 RF за раз!")
+            return
+    except ValueError:
+        await update.message.reply_text("❌ Введите число")
+        return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        if user.radfragments < amount:
+            await update.message.reply_text(f"❌ Не хватает! У вас {user.radfragments} RF")
+            return
+        
+        if amount >= 100:
+            coins = amount * 65 + 1500
+        elif amount >= 50:
+            coins = amount * 60 + 500
+        elif amount >= 10:
+            coins = amount * 55 + 50
+        else:
+            coins = amount * 50
+        
+        user.radfragments -= amount
+        user.radcoins += coins
+        session.commit()
+        await update.message.reply_text(
+            f"💱 *Обмен*\n\n"
+            f"📦 {amount} RF → {coins} RC\n"
+            f"☢️ Баланс: {user.radcoins:.0f} RC",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in exchange: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+# ==================== КРАФТ ====================
+
+async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Крафт предметов (только обычная аптечка осталась)"""
+    if not context.args:
+        await update.message.reply_text(
+            "🛠️ *Крафт предметов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "*💊 АПТЕЧКИ*\n"
+            "• 💊 Аптечка (25%) — 2 RF\n\n"
+            "*🎣 ОРУЖИЕ*\n"
+            "• 🎣 Гарпун — 300 RF + 700 RC\n"
+            "• 🔫 Винтовка — 250 RF + 3500 RC\n\n"
+            "*🥇 БРОНЯ*\n"
+            "• 🥈 Броня 2 — 250 RF + 2700 RC\n"
+            "• 🥇 Броня 3 — 800 RF + 6700 RC\n\n"
+            "📝 */craft [предмет]*",
+            parse_mode='Markdown'
+        )
+        return
+    
+    item = context.args[0].lower()
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        recipes = {
+            'аптечка': {'rf': 2, 'rc': 0, 'level': 1, 'type': 'medkit'},
+            'гарпун': {'rf': 300, 'rc': 700, 'level': 1, 'type': 'harpoon'},
+            'винтовка': {'rf': 250, 'rc': 3500, 'level': 4, 'type': 'rifle'},
+            'броня2': {'rf': 250, 'rc': 2700, 'level': 11, 'type': 'armor2'},
+            'броня3': {'rf': 800, 'rc': 6700, 'level': 21, 'type': 'armor3'}
+        }
+        
+        if item not in recipes:
+            await update.message.reply_text("❌ Неизвестный рецепт")
+            return
+        
+        recipe = recipes[item]
+        if user.level < recipe['level']:
+            await update.message.reply_text(f"❌ Нужен {recipe['level']} уровень")
+            return
+        if user.radfragments < recipe['rf']:
+            await update.message.reply_text(f"❌ Нужно {recipe['rf']} RF")
+            return
+        if user.radcoins < recipe['rc']:
+            await update.message.reply_text(f"❌ Нужно {recipe['rc']} RC")
+            return
+        
+        user.radfragments -= recipe['rf']
+        user.radcoins -= recipe['rc']
+        
+        if item == 'гарпун':
+            add_item_to_inventory(user, 'гарпун', 1)
+        elif item == 'винтовка':
+            add_item_to_inventory(user, 'винтовка', 1)
+        elif item == 'броня2':
+            add_item_to_inventory(user, 'броня2', 1)
+        elif item == 'броня3':
+            add_item_to_inventory(user, 'броня3', 1)
+        else:
+            add_item_to_inventory(user, 'аптечка', 1)
+        
+        session.commit()
+        await update.message.reply_text(
+            f"✅ *Создано: {item}*\n"
+            f"💰 Потрачено: {recipe['rf']} RF + {recipe['rc']} RC",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in craft: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
