@@ -1,12 +1,20 @@
-# database.py - База данных
+# database.py - База данных (полностью независимый модуль)
 # Версия: 2.0.0
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from core import Base, engine, Session, SUPER_ADMIN_IDS, logger
+from sqlalchemy.orm import sessionmaker, scoped_session
 
-# ==================== МОДЕЛИ ====================
+# ==================== СОЗДАНИЕ БАЗЫ ====================
+Base = declarative_base()
+engine = create_engine('sqlite:///radcoin_bot.db', pool_size=10, max_overflow=20)
+Session = scoped_session(sessionmaker(bind=engine))
+
+# ==================== КОНСТАНТЫ (дублируем, чтобы не было циклических импортов) ====================
+SUPER_ADMIN_IDS = [6595788533]
+
+# ==================== МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ ====================
 
 class User(Base):
     __tablename__ = 'users'
@@ -30,7 +38,7 @@ class User(Base):
     cooldown_reducer_until = Column(DateTime, nullable=True)
     energy_drink_until = Column(DateTime, nullable=True)
     
-    # Экипировка (остались только броня и оружие)
+    # Экипировка (только броня и оружие)
     armor_type = Column(String, default=None)
     weapon = Column(String, default=None)
     medkits = Column(Integer, default=0)
@@ -95,6 +103,8 @@ class User(Base):
     casino_cash_mult = Column(Integer, nullable=True)   # NULL = используется публичный
 
 
+# ==================== МОДЕЛЬ КЛАНА ====================
+
 class Clan(Base):
     __tablename__ = 'clans'
     id = Column(Integer, primary_key=True)
@@ -113,7 +123,7 @@ class Clan(Base):
 def init_db():
     """Создание таблиц"""
     Base.metadata.create_all(engine)
-    logger.info("✅ База данных инициализирована")
+    print("✅ База данных инициализирована")
 
 
 def init_super_admin():
@@ -151,13 +161,13 @@ def get_user(user_id, username=None):
         session.commit()
         return user
     except Exception as e:
-        logger.error(f"Database error: {e}")
+        print(f"Database error: {e}")
         session.rollback()
         return None
     finally:
         Session.remove()
 
 
-# Запускаем инициализацию
+# Запускаем инициализацию при импорте
 init_db()
 init_super_admin()
