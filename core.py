@@ -1,14 +1,14 @@
-# core.py - Ядро бота (без циклических зависимостей)
+# core.py - Ядро бота (без шедулера и циклических зависимостей)
 # Версия: 2.0.0
 
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 
-# Импортируем из config, а не наоборот!
-from config import logger, BACKUP_DIR, TOKEN
+# Импорты из config и database
+from config import logger, BACKUP_DIR
 from database import Session, User
 
 # ==================== ПРОВЕРКА АДМИНА ====================
@@ -52,9 +52,9 @@ def auto_backup():
             backup_name = f"radcoin_bot.db.backup_{timestamp}.db"
             backup_path = os.path.join(BACKUP_DIR, backup_name)
             shutil.copy(db_path, backup_path)
-            backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith('radcoin_bot.db.backup')])
-            if len(backups) > 24:
-                for old_backup in backups[:-24]:
+            backups_list = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith('radcoin_bot.db.backup')])
+            if len(backups_list) > 24:
+                for old_backup in backups_list[:-24]:
                     os.remove(os.path.join(BACKUP_DIR, old_backup))
             logger.info(f"✅ Автобэкап: {backup_name}")
     except Exception as e:
