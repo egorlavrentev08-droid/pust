@@ -757,3 +757,63 @@ async def factory_leave(update: Update, context: ContextTypes.DEFAULT_TYPE, fact
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
+    # ==================== АДМИН-КОМАНДЫ ФАБРИК ====================
+
+async def afactory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Админ-команды для управления фабриками"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "👑 *Админ-панель фабрик*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/afactory list — список всех точек\n"
+            "/afactory list [название] — игроки на точке\n"
+            "/afactory remove @ник [точка] — убрать игрока\n"
+            "/afactory add @ник [точка] — добавить игрока\n"
+            "/afactory ban @ник [точка] — заблокировать\n"
+            "/afactory unban @ник [точка] — разблокировать\n"
+            "/afactory clean [точка] — очистить точку",
+            parse_mode='Markdown'
+        )
+        return
+    
+    action = context.args[0].lower()
+    
+    if action == 'list':
+        if len(context.args) > 1:
+            await afactory_list_point(update, context, context.args[1].lower())
+        else:
+            await afactory_list_all(update, context)
+    elif action == 'remove':
+        if len(context.args) < 3:
+            await update.message.reply_text("❌ /afactory remove @ник [точка]")
+            return
+        await afactory_remove(update, context, context.args[1].lstrip('@'), context.args[2].lower())
+    elif action == 'add':
+        if len(context.args) < 3:
+            await update.message.reply_text("❌ /afactory add @ник [точка]")
+            return
+        await afactory_add(update, context, context.args[1].lstrip('@'), context.args[2].lower())
+    elif action == 'ban':
+        if len(context.args) < 3:
+            await update.message.reply_text("❌ /afactory ban @ник [точка]")
+            return
+        await afactory_ban(update, context, context.args[1].lstrip('@'), context.args[2].lower())
+    elif action == 'unban':
+        if len(context.args) < 3:
+            await update.message.reply_text("❌ /afactory unban @ник [точка]")
+            return
+        await afactory_unban(update, context, context.args[1].lstrip('@'), context.args[2].lower())
+    elif action == 'clean':
+        if len(context.args) < 2:
+            await update.message.reply_text("❌ /afactory clean [точка]")
+            return
+        await afactory_clean(update, context, context.args[1].lower())
+    else:
+        await update.message.reply_text("❌ Неизвестная команда")
+
+# Все вспомогательные функции afactory_* тоже добавить в chest.py
+# (afactory_list_all, afactory_list_point, afactory_remove, afactory_add, afactory_ban, afactory_unban, afactory_clean)
