@@ -40,6 +40,13 @@ async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         base_rc = calculate_reward(actual_level)
         exp_gain = calculate_experience()
+
+        # Бонусы энергетика
+if user.energy_drink_until and user.energy_drink_until > now:
+    rc_gain = int(rc_gain * 1.05)      # +5% RC
+    fragment_gain = int(fragment_gain * 1.25)  # +25% RF
+    crystal_gain = int(crystal_gain * 2)       # +100% кристаллы
+    # +10% к шансу выжить на охоте — добавим в hunt
         
         # Бонусы локации (болото удалено)
         location = user.location if hasattr(user, 'location') else 'normal'
