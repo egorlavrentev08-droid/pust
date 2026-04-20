@@ -1,6 +1,7 @@
 # collect.py - Сбор, охота, локации, питомцы
 # Версия: 2.0.0
 
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import logger, MAX_LEVEL, get_random_interval, calculate_reward, calculate_experience
