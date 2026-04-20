@@ -7,11 +7,11 @@ from telegram.ext import CommandHandler, MessageHandler, filters
 # Импорты из config
 from config import logger, TOKEN, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT
 
-# Импорты из core (бэкапы)
+# Импорты из core (бэкапы и утилиты)
 from core import backups, restore_backup, backup_now, auto_backup
 
 # Импорты команд из user
-from user import start, help_command, profile, stats, achievements, announce, phase_info
+from user import start, help_command, profile, stats, achievements, announce, phase_info, class_command, class_info
 
 # Импорты команд из collect
 from collect import collect, hunt, locate, pet_command
@@ -32,9 +32,6 @@ from admin import (
     admin_classes, call, lscall, admin_hide, top_command, acasino,
     advice_handler, gchest, admin_players
 )
-
-# Импорты классов из user
-from user import class_command, class_info
 
 # Создаём шедулер
 scheduler = AsyncIOScheduler()
@@ -141,6 +138,7 @@ def main():
     init_bot_data(app)
     register_handlers(app)
     
+    # Запускаем планировщик для автобэкапов (каждый час)
     scheduler.add_job(auto_backup, 'interval', hours=1)
     scheduler.start()
     
