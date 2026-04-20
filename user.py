@@ -7,6 +7,8 @@ from config import logger, MAX_LEVEL, get_exp_for_level
 from core import send_to_private
 from database import Session, User, Clan
 from utils import get_equipped
+import json
+from datetime import datetime, timedelta
 # ==================== ПРОФИЛЬ ====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
