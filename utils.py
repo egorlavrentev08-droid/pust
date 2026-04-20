@@ -166,3 +166,8 @@ def get_exp_for_level(level):
     for i in range(2, level + 1):
         total += 100 + (i - 2) * 50
     return total
+
+def get_user_by_username(session, username):
+    """Найти пользователя по username (без учёта регистра)"""
+    from sqlalchemy import func
+    return session.query(User).filter(func.lower(User.username) == username.lower()).first()
