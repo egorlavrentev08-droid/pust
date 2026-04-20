@@ -1,6 +1,8 @@
 # main.py - Запуск и регистрация команд
 # Версия: 2.0.0
 
+from money import shop, buy, sell, equip, casino, exchange, craft, inv
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram.ext import CommandHandler, MessageHandler, filters
 
