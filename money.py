@@ -2,12 +2,120 @@
 # Версия: 2.0.0
 
 import random
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
+
+# Импорты из config
 from config import logger, MAX_MEDKITS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT, CASINO_MIN_BET, CASINO_MAX_BET
+
+# Импорты из core
 from core import send_to_private
+
+# Импорты из database
 from database import Session, User
-from utils import get_inventory, get_equipped, get_item_count, add_item_to_inventory, remove_item_from_inventory, check_achievements
+
+# Импорты из utils
+from utils import get_inventory, get_equipped, get_item_count, add_item_to_inventory, remove_item_from_inventory, check_achievements, save_equipped
+
+
+# ==================== ИНВЕНТАРЬ ====================
+
+async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать инвентарь и экипировку"""
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        inventory = get_inventory(user)
+        equipped = get_equipped(user)
+        
+        text = "📦 *Инвентарь*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        # Экипированные предметы
+        text += "*🟢 ЭКИПИРОВАНО*\n"
+        
+        # Броня
+        armor_display = {
+            'броня1': '🟢 *Лёгкая броня* (25% выжить)',
+            'броня2': '🔵 *Утяжеленная броня* (40% выжить)',
+            'броня3': '🟣 *Тактическая броня* (50% выжить)',
+            'броня4': '🟠 *Тяжёлая броня* (60% выжить)',
+            'броня5': '🔴 *Силовая броня* (75% выжить)'
+        }
+        if equipped.get('armor'):
+            armor = equipped['armor']
+            armor_name = armor_display.get(armor, f"❓ {armor}")
+            text += f"{armor_name} — активна\n"
+        
+        # Оружие
+        weapon_display = {
+            'ружье': '🔫 *Ружьё* (75/20/4/1%)',
+            'гарпун': '🎣 *Гарпун* (70/20/9/1%)',
+            'винтовка': '🔫 *Винтовка* (50/30/15/5%)',
+            'гаусс': '⚡ *Винтовка Гаусса* (40/25/20/15%)'
+        }
+        if equipped.get('weapon'):
+            weapon = equipped['weapon']
+            weapon_name = weapon_display.get(weapon, f"❓ {weapon}")
+            text += f"{weapon_name} — экипировано\n"
+        
+        if not any([equipped.get('armor'), equipped.get('weapon')]):
+            text += "❌ Нет экипированных предметов\n"
+        
+        text += "\n*📦 ПРЕДМЕТЫ*\n"
+        
+        # Сортируем по алфавиту
+        inventory.sort(key=lambda x: x['item'])
+        
+        item_names = {
+            'броня1': '🟢 Лёгкая броня',
+            'броня2': '🔵 Утяжеленная броня',
+            'броня3': '🟣 Тактическая броня',
+            'броня4': '🟠 Тяжёлая броня',
+            'броня5': '🔴 Силовая броня',
+            'ружье': '🔫 Ружьё',
+            'гарпун': '🎣 Гарпун',
+            'винтовка': '🔫 Винтовка',
+            'гаусс': '⚡ Винтовка Гаусса',
+            'аптечка': '💊 Аптечка',
+            'энергетик': '⚡ Энергетик',
+            'редуктор': '⏱️ Редуктор'
+        }
+        
+        for item in inventory:
+            name = item['item']
+            count = item['count']
+            display_name = item_names.get(name, name)
+            expires = item.get('expires')
+            if expires:
+                exp_date = datetime.fromisoformat(expires)
+                if exp_date > datetime.now():
+                    text += f"{display_name} — {count} шт (до {exp_date.strftime('%d.%m %H:%M')})\n"
+                else:
+                    continue
+            else:
+                text += f"{display_name} — {count} шт\n"
+        
+        if not inventory:
+            text += "❌ Инвентарь пуст\n"
+        
+        text += "\n💡 Команды:\n"
+        text += "/sell [предмет] [кол-во] — продать\n"
+        text += "/equip броня/оружие [название] — экипировать\n"
+        text += "/equip броня/оружие 0 — снять"
+        
+        await send_to_private(update, context, text)
+    except Exception as e:
+        logger.error(f"Error in inv: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
+
 # ==================== МАГАЗИН ====================
 
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -27,13 +135,14 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 🔫 *Винтовка* (5000) — 50/30/15/5% (25 ур)\n"
         "• ⚡ *Винтовка Гаусса* (20000) — 40/25/20/15% (50 ур)\n\n"
         "*💊 РАСХОДНИКИ*\n"
-        "• 💊 *Аптечка* (125) — +25% к шансу (макс 10)\n\n"
+        "• 💊 *Аптечка* (125) — +25% к шансу\n\n"
         "*⚡ УСИЛЕНИЯ*\n"
         "• ⚡ *Энергетик* (250) — +5 уровней на 1 сбор\n"
         "• ⏱️ *Редуктор* (1250) — ускоряет восстановление (3д)\n\n"
         "📝 */buy [товар] [кол-во]*"
     )
     await send_to_private(update, context, text)
+
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Купить предмет"""
@@ -133,6 +242,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 # ==================== ПРОДАЖА ====================
 
 async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,6 +334,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 # ==================== ЭКИПИРОВКА ====================
 
 async def equip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,7 +362,6 @@ async def equip(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ /start")
             return
         
-        inventory = get_inventory(user)
         equipped = get_equipped(user)
         
         armor_names = {
@@ -352,6 +462,7 @@ async def equip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 # ==================== КАЗИНО ====================
 
 async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -379,7 +490,6 @@ async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Не хватает! У вас {user.radcoins:.0f} RC")
             return
         
-        # Берём настройки казино: сначала персональные, потом публичные
         chance = user.casino_chance if user.casino_chance is not None else CASINO_PUBLIC_CHANCE
         mult = user.casino_cash_mult if user.casino_cash_mult is not None else CASINO_PUBLIC_CASH_MULT
         
@@ -412,6 +522,7 @@ async def casino(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== ОБМЕН ====================
 
@@ -468,6 +579,7 @@ async def exchange(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 # ==================== КРАФТ ====================
 
 async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -497,11 +609,11 @@ async def craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         recipes = {
-            'аптечка': {'rf': 2, 'rc': 0, 'level': 1, 'type': 'medkit'},
-            'гарпун': {'rf': 300, 'rc': 700, 'level': 1, 'type': 'harpoon'},
-            'винтовка': {'rf': 250, 'rc': 3500, 'level': 4, 'type': 'rifle'},
-            'броня2': {'rf': 250, 'rc': 2700, 'level': 11, 'type': 'armor2'},
-            'броня3': {'rf': 800, 'rc': 6700, 'level': 21, 'type': 'armor3'}
+            'аптечка': {'rf': 2, 'rc': 0, 'level': 1},
+            'гарпун': {'rf': 300, 'rc': 700, 'level': 1},
+            'винтовка': {'rf': 250, 'rc': 3500, 'level': 4},
+            'броня2': {'rf': 250, 'rc': 2700, 'level': 11},
+            'броня3': {'rf': 800, 'rc': 6700, 'level': 21}
         }
         
         if item not in recipes:
