@@ -1005,3 +1005,53 @@ async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
+# ==================== РАСПРОДАЖИ ====================
+
+async def sale(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Устроить распродажу в магазине (админ)"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "🏷️ *Распродажа*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/sale [скидка%] [часы] — устроить распродажу\n"
+            "/sale end — завершить распродажу\n\n"
+            "Пример: `/sale 50 24` — скидка 50% на 24 часа",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if context.args[0].lower() == 'end':
+        context.bot_data['sale_discount'] = 0
+        context.bot_data['sale_until'] = None
+        await update.message.reply_text("✅ *Распродажа завершена!* Цены вернулись к обычным.", parse_mode='Markdown')
+        return
+    
+    try:
+        discount = int(context.args[0])
+        hours = int(context.args[1])
+        
+        if discount < 1 or discount > 90:
+            await update.message.reply_text("❌ Скидка от 1% до 90%")
+            return
+        if hours < 1 or hours > 168:
+            await update.message.reply_text("❌ Время от 1 до 168 часов")
+            return
+        
+        context.bot_data['sale_discount'] = discount
+        context.bot_data['sale_until'] = datetime.now() + timedelta(hours=hours)
+        
+        await update.message.reply_text(
+            f"🏷️ *РАСПРОДАЖА!*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🎉 Скидка {discount}% на ВСЕ товары!\n"
+            f"⏰ Длительность: {hours} часов\n"
+            f"📅 До: {(datetime.now() + timedelta(hours=hours)).strftime('%d.%m %H:%M')}\n\n"
+            f"🛒 Торопитесь, предложение ограничено!",
+            parse_mode='Markdown'
+        )
+    except (ValueError, IndexError):
+        await update.message.reply_text("❌ Пример: `/sale 50 24`", parse_mode='Markdown')
+        
