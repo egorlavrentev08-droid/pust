@@ -1,8 +1,6 @@
 # main.py - Запуск и регистрация команд
 # Версия: 2.0.0
 
-from money import shop, buy, sell, equip, casino, exchange, craft, inv
-
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram.ext import CommandHandler, MessageHandler, filters
 
@@ -19,7 +17,7 @@ from user import start, help_command, profile, stats, achievements, announce, ph
 from collect import collect, hunt, locate, pet_command
 
 # Импорты команд из money
-from money import shop, buy, sell, equip, casino, exchange, craft
+from money import shop, buy, sell, equip, casino, exchange, craft, inv, use_item
 
 # Импорты команд из clan
 from clan import clan_command, radion, radio, radio_register_group, aradio
@@ -43,12 +41,7 @@ scheduler = AsyncIOScheduler()
 
 def register_handlers(app):
     """Регистрация всех обработчиков команд"""
-
-    # Инвентарь
-    app.add_handler(CommandHandler("inv", inv))
-
-    # Классы  
-    app.add_handler(CommandHandler("class", class_command))
+    
     # Основные команды пользователя
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
@@ -72,6 +65,8 @@ def register_handlers(app):
     app.add_handler(CommandHandler("casino", casino))
     app.add_handler(CommandHandler("exchange", exchange))
     app.add_handler(CommandHandler("craft", craft))
+    app.add_handler(CommandHandler("inv", inv))
+    app.add_handler(CommandHandler("use", use_item))  # <--- КОМАНДА /use
     
     # Классы
     app.add_handler(CommandHandler("class", class_command))
