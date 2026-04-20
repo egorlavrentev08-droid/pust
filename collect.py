@@ -1,15 +1,10 @@
 # collect.py - Сбор, охота, локации, питомцы
 # Версия: 2.0.0
 
-import random
-from core import get_exp_for_level
-from datetime import datetime, timedelta
-from telegram import Update
-from telegram.ext import ContextTypes
-from core import logger, MAX_LEVEL, get_random_interval, calculate_reward, calculate_experience, send_to_private
+from config import logger, MAX_LEVEL, get_random_interval, calculate_reward, calculate_experience
+from core import send_to_private
 from database import Session, User, Clan
-from utils import get_equipped, get_item_count, add_item_to_inventory, remove_item_from_inventory, apply_class_bonus, calculate_survive_chance, check_achievements
-
+from utils import get_equipped, add_item_to_inventory, apply_class_bonus, check_achievements
 # ==================== СБОР РЕСУРСОВ ====================
 
 async def collect(update: Update, context: ContextTypes.DEFAULT_TYPE):
