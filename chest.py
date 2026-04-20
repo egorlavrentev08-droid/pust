@@ -1,6 +1,7 @@
 # chest.py - Сундуки и фабрики
 # Версия: 2.0.0
 
+import random
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import logger, FACTORIES
