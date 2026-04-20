@@ -190,26 +190,6 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'энергетик': '⚡ Энергетик',
             'редуктор': '⏱️ Редуктор'
         }
-
-        # Активные эффекты
-text += "\n*⚡ АКТИВНЫЕ ЭФФЕКТЫ*\n"
-now = datetime.now()
-
-if user.energy_drink_until and user.energy_drink_until > now:
-    remaining = user.energy_drink_until - now
-    hours = remaining.seconds // 3600
-    minutes = (remaining.seconds % 3600) // 60
-    text += f"⚡ *Энергетик* — {hours}ч {minutes}мин (стеков: {user.energy_drink_stacks})\n"
-else:
-    text += "⚡ Энергетик — не активен\n"
-
-if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
-    remaining = user.cooldown_reducer_until - now
-    days = remaining.days
-    hours = remaining.seconds // 3600
-    text += f"⏱️ *Редуктор* — {days}д {hours}ч (стеков: {user.reducer_stacks})\n"
-else:
-    text += "⏱️ Редуктор — не активен\n"
         
         for item in inventory:
             name = item['item']
@@ -228,10 +208,36 @@ else:
         if not inventory:
             text += "❌ Инвентарь пуст\n"
         
+        # ===== АКТИВНЫЕ ЭФФЕКТЫ =====
+        text += "\n*⚡ АКТИВНЫЕ ЭФФЕКТЫ*\n"
+        now = datetime.now()
+        
+        # Энергетик
+        if user.energy_drink_until and user.energy_drink_until > now:
+            remaining = user.energy_drink_until - now
+            hours = remaining.seconds // 3600
+            minutes = (remaining.seconds % 3600) // 60
+            text += f"⚡ *Энергетик* — {hours}ч {minutes}мин (стеков: {user.energy_drink_stacks})\n"
+            text += "   ✨ +10% выживание, +5% RC, +25% RF, +100% кристаллы\n"
+        else:
+            text += "⚡ Энергетик — не активен\n"
+        
+        # Редуктор
+        if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
+            remaining = user.cooldown_reducer_until - now
+            days = remaining.days
+            hours = remaining.seconds // 3600
+            text += f"⏱️ *Редуктор* — {days}д {hours}ч (стеков: {user.reducer_stacks})\n"
+            text += "   ⚡ Ускорение восстановления сбора вдвое\n"
+        else:
+            text += "⏱️ Редуктор — не активен\n"
+        # ============================
+        
         text += "\n💡 Команды:\n"
         text += "/sell [предмет] [кол-во] — продать\n"
         text += "/equip броня/оружие [название] — экипировать\n"
-        text += "/equip броня/оружие 0 — снять"
+        text += "/equip броня/оружие 0 — снять\n"
+        text += "/use энергетик/редуктор [кол-во] — использовать"
         
         await send_to_private(update, context, text)
     except Exception as e:
