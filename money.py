@@ -21,6 +21,111 @@ from utils import get_inventory, get_equipped, get_item_count, add_item_to_inven
 
 # ==================== ИНВЕНТАРЬ ====================
 
+async def use_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Использовать расходный предмет (энергетик или редуктор)"""
+    if not context.args:
+        await update.message.reply_text(
+            "⚡ *Использование предметов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "/use энергетик [кол-во] — +10% выживание, +5% RC, +25% RF, +100% кристаллы на 6 часов\n"
+            "/use редуктор [кол-во] — ускоряет восстановление сбора на 3 дня\n\n"
+            "📦 Можно использовать несколько штук сразу, эффекты суммируются.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    item = context.args[0].lower()
+    count = 1
+    if len(context.args) > 1:
+        try:
+            count = int(context.args[1])
+            if count <= 0 or count > 100:
+                await update.message.reply_text("❌ 1-100 штук за раз")
+                return
+        except ValueError:
+            await update.message.reply_text("❌ Введите число")
+            return
+    
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        now = datetime.now()
+        
+        if item == 'энергетик':
+            available = get_item_count(user, 'энергетик')
+            if available < count:
+                await update.message.reply_text(f"❌ У вас только {available} энергетиков!")
+                return
+            
+            # Удаляем использованные энергетики из инвентаря
+            remove_item_from_inventory(user, 'энергетик', count)
+            
+            # Обновляем время действия
+            if user.energy_drink_until and user.energy_drink_until > now:
+                # Добавляем время к существующему
+                user.energy_drink_until += timedelta(hours=6 * count)
+                user.energy_drink_stacks += count
+            else:
+                # Устанавливаем новое время
+                user.energy_drink_until = now + timedelta(hours=6 * count)
+                user.energy_drink_stacks = count
+            
+            session.commit()
+            
+            hours = 6 * count
+            await update.message.reply_text(
+                f"⚡ *Энергетик активирован!*\n\n"
+                f"📦 Использовано: {count} шт\n"
+                f"⏰ Длительность: {hours} часов\n"
+                f"✨ Бонусы:\n"
+                f"  • +10% шанс выжить на охоте\n"
+                f"  • +5% к сбору RC\n"
+                f"  • +25% к сбору RF\n"
+                f"  • +100% к клановым кристаллам\n\n"
+                f"📊 Активно до: {user.energy_drink_until.strftime('%d.%m %H:%M')}",
+                parse_mode='Markdown'
+            )
+        
+        elif item == 'редуктор':
+            available = get_item_count(user, 'редуктор')
+            if available < count:
+                await update.message.reply_text(f"❌ У вас только {available} редукторов!")
+                return
+            
+            remove_item_from_inventory(user, 'редуктор', count)
+            
+            if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
+                user.cooldown_reducer_until += timedelta(days=3 * count)
+                user.reducer_stacks += count
+            else:
+                user.cooldown_reducer_until = now + timedelta(days=3 * count)
+                user.reducer_stacks = count
+            
+            session.commit()
+            
+            days = 3 * count
+            await update.message.reply_text(
+                f"⏱️ *Редуктор активирован!*\n\n"
+                f"📦 Использовано: {count} шт\n"
+                f"⏰ Длительность: {days} дней\n"
+                f"⚡ Эффект: ускорение восстановления сбора вдвое\n\n"
+                f"📊 Активно до: {user.cooldown_reducer_until.strftime('%d.%m %H:%M')}",
+                parse_mode='Markdown'
+            )
+        
+        else:
+            await update.message.reply_text("❌ Доступно: энергетик, редуктор")
+    
+    except Exception as e:
+        logger.error(f"Error in use_item: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+
 async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать инвентарь и экипировку"""
     session = Session()
