@@ -2,6 +2,7 @@
 # Версия: 2.0.0
 
 import random
+from config import get_exp_for_level
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
