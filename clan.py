@@ -1,14 +1,9 @@
 # clan.py - Кланы и радио
 # Версия: 2.0.0
 
-import json
-from datetime import datetime, timedelta
-from telegram import Update
-from telegram.ext import ContextTypes
-from core import logger, MAX_CLAN_BONUS, send_to_private
+from config import logger, MAX_CLAN_BONUS
+from core import send_to_private, is_admin
 from database import Session, User, Clan
-from utils import is_admin
-
 # ==================== КЛАНЫ ====================
 
 async def clan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
