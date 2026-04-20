@@ -116,6 +116,8 @@ def register_handlers(app):
     # Обработчик для регистрации групп в радио
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, radio_register_group))
 
+    app.add_handler(CommandHandler("sale", sale))
+
 
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
