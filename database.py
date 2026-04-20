@@ -14,34 +14,7 @@ Session = scoped_session(sessionmaker(bind=engine))
 # ==================== КОНСТАНТЫ (дублируем, чтобы не было циклических импортов) ====================
 SUPER_ADMIN_IDS = [6595788533]
 
-# ==================== МИГРАЦИИ БАЗЫ ДАННЫХ ====================
 
-def migrate_db():
-    """Автоматическое добавление новых колонок при обновлении"""
-    from sqlalchemy import inspect, text
-    
-    engine = create_engine('sqlite:///radcoin_bot.db')
-    inspector = inspect(engine)
-    
-    # Список колонок, которые нужно добавить в таблицу users
-    columns_to_add = {
-        'energy_drink_stacks': 'INTEGER DEFAULT 0',
-        'reducer_stacks': 'INTEGER DEFAULT 0',
-    }
-    
-    # Проверяем существующие колонки
-    existing_columns = [col['name'] for col in inspector.get_columns('users')]
-    
-    with engine.connect() as conn:
-        for col_name, col_type in columns_to_add.items():
-            if col_name not in existing_columns:
-                try:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
-                    conn.commit()
-                    print(f"✅ Добавлена колонка: {col_name}")
-                except Exception as e:
-                    print(f"⚠️ Ошибка при добавлении {col_name}: {e}")
-                    
 # ==================== МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ ====================
 
 class User(Base):
@@ -129,13 +102,15 @@ class User(Base):
     # Казино (персональные настройки)
     casino_chance = Column(Integer, nullable=True)      # NULL = используется публичный
     casino_cash_mult = Column(Integer, nullable=True)   # NULL = используется публичный
-
-    # Добавить после existing полей:
+    
     # Эффекты (для /use)
-    energy_drink_until = Column(DateTime, nullable=True)   # до какого времени действует энергетик
-    cooldown_reducer_until = Column(DateTime, nullable=True)  # до какого времени ускорен сбор
-    energy_drink_stacks = Column(Integer, default=0)       # количество активированных энергетиков (для отображения)
+    energy_drink_stacks = Column(Integer, default=0)       # количество активированных энергетиков
     reducer_stacks = Column(Integer, default=0)            # количество активированных редукторов
+    
+    # Лимиты магазина
+    shop_purchases = Column(String, default='{}')          # JSON {"товар": количество_купленных}
+    last_shop_reset = Column(DateTime, nullable=True)      # время последнего сброса лимитов
+
 
 # ==================== МОДЕЛЬ КЛАНА ====================
 
@@ -151,18 +126,46 @@ class Clan(Base):
     exp_bonus = Column(Integer, default=0)
     double_bonus = Column(Integer, default=0)
 
-    # Лимиты магазина
-shop_purchases = Column(String, default='{}')  # JSON {"товар": количество_купленных}
-last_shop_reset = Column(DateTime, nullable=True)
+
+# ==================== МИГРАЦИИ БАЗЫ ДАННЫХ ====================
+
+def migrate_db():
+    """Автоматическое добавление новых колонок при обновлении"""
+    from sqlalchemy import inspect, text
+    
+    inspector = inspect(engine)
+    
+    # Список колонок, которые нужно добавить в таблицу users
+    columns_to_add = {
+        'energy_drink_stacks': 'INTEGER DEFAULT 0',
+        'reducer_stacks': 'INTEGER DEFAULT 0',
+        'shop_purchases': 'TEXT DEFAULT \'{}\'',
+        'last_shop_reset': 'DATETIME',
+    }
+    
+    # Проверяем существующие колонки
+    existing_columns = [col['name'] for col in inspector.get_columns('users')]
+    
+    with engine.connect() as conn:
+        for col_name, col_type in columns_to_add.items():
+            if col_name not in existing_columns:
+                try:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                    conn.commit()
+                    print(f"✅ Добавлена колонка: {col_name}")
+                except Exception as e:
+                    print(f"⚠️ Ошибка при добавлении {col_name}: {e}")
+
 
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
 def init_db():
     """Создание таблиц и миграция"""
     Base.metadata.create_all(engine)
-    migrate_db()  # <-- Добавить эту строку
+    migrate_db()  # Автоматически добавляем новые колонки
     print("✅ База данных инициализирована")
-    
+
+
 def init_super_admin():
     """Добавление главных администраторов"""
     session = Session()
