@@ -1,15 +1,10 @@
 # chest.py - Сундуки и фабрики
 # Версия: 2.0.0
 
-import random
-import json
-from datetime import datetime, timedelta
-from telegram import Update
-from telegram.ext import ContextTypes
-from core import logger, FACTORIES, send_to_private
+from config import logger, FACTORIES
+from core import send_to_private, is_admin
 from database import Session, User
-from utils import add_item_to_inventory, get_item_count, remove_item_from_inventory, is_admin
-
+from utils import add_item_to_inventory, get_item_count, remove_item_from_inventory
 # ==================== СУНДУКИ ====================
 
 async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
