@@ -151,6 +151,9 @@ class Clan(Base):
     exp_bonus = Column(Integer, default=0)
     double_bonus = Column(Integer, default=0)
 
+    # Лимиты магазина
+shop_purchases = Column(String, default='{}')  # JSON {"товар": количество_купленных}
+last_shop_reset = Column(DateTime, nullable=True)
 
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
