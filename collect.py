@@ -275,7 +275,7 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         phase = context.bot_data.get('phase', 1)
-        if phase < 2:
+        if phase < 1:
             await update.message.reply_text("❌ *Охота недоступна!* Фаза 2 или 3", parse_mode='Markdown')
             return
         
@@ -295,6 +295,10 @@ async def hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             minutes = (remaining.seconds % 3600) // 60
             await update.message.reply_text(f"⏰ *Следующая охота через {hours}ч {minutes}мин.*", parse_mode='Markdown')
             return
+
+        # Бонус энергетика к выживанию
+if user.energy_drink_until and user.energy_drink_until > now:
+    survive_chance = min(100, survive_chance + 10)
         
         equipped = get_equipped(user)
         
