@@ -286,30 +286,96 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== МАГАЗИН ====================
 
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать магазин"""
-    text = (
-        "🛒 *Магазин Пустоши*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💰 *Цены в РадКоинах (RC)*\n\n"
-        "*🛡️ БРОНЯ*\n"
-        "• 🟢 *Лёгкая броня* (1000) — 25% выжить\n"
-        "• 🔵 *Утяжеленная броня* (2500) — 40% выжить (10 ур)\n"
-        "• 🟣 *Тактическая броня* (5000) — 50% выжить\n"
-        "• 🟠 *Тяжёлая броня* (10000) — 60% выжить (25 ур)\n"
-        "• 🔴 *Силовая броня* (25000) — 75% выжить (50 ур)\n\n"
-        "*⚔️ ОРУЖИЕ*\n"
-        "• 🔫 *Ружьё* (300) — 75/20/4/1%\n"
-        "• 🎣 *Гарпун* (500) — 70/20/9/1% (10 ур)\n"
-        "• 🔫 *Винтовка* (5000) — 50/30/15/5% (25 ур)\n"
-        "• ⚡ *Винтовка Гаусса* (20000) — 40/25/20/15% (50 ур)\n\n"
-        "*💊 РАСХОДНИКИ*\n"
-        "• 💊 *Аптечка* (125) — +25% к шансу\n\n"
-        "*⚡ УСИЛЕНИЯ*\n"
-        "• ⚡ *Энергетик* (250) — +5 уровней на 1 сбор\n"
-        "• ⏱️ *Редуктор* (1250) — ускоряет восстановление (3д)\n\n"
-        "📝 */buy [товар] [кол-во]*"
-    )
-    await send_to_private(update, context, text)
-
+    """Показать магазин (только доступные по уровню товары)"""
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+        
+        now = datetime.now()
+        discount = context.bot_data.get('sale_discount', 0)
+        sale_until = context.bot_data.get('sale_until')
+        
+        sale_line = ""
+        if discount > 0 and sale_until and sale_until > now:
+            remaining = sale_until - now
+            hours = remaining.seconds // 3600
+            minutes = (remaining.seconds % 3600) // 60
+            sale_line = f"\n\n🔥 *РАСПРОДАЖА {discount}%!* Осталось: {hours}ч {minutes}мин 🔥"
+        
+        text = f"🛒 *Магазин Пустоши*{sale_line}\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        text += f"👤 *Ваш уровень:* {user.level}\n"
+        text += "💰 *Цены в РадКоинах (RC)*\n\n"
+        
+        # ===== БРОНЯ =====
+        text += "*🛡️ БРОНЯ*\n"
+        
+        if user.level >= 1:
+            text += "• 🟢 *Лёгкая броня* (1000) — 25% выжить\n"
+        if user.level >= 10:
+            text += "• 🔵 *Утяжеленная броня* (2500) — 40% выжить (10 ур)\n"
+        if user.level >= 1:
+            text += "• 🟣 *Тактическая броня* (5000) — 50% выжить\n"
+        if user.level >= 25:
+            text += "• 🟠 *Тяжёлая броня* (10000) — 60% выжить (25 ур)\n"
+        if user.level >= 50:
+            text += "• 🔴 *Силовая броня* (25000) — 75% выжить (50 ур)\n"
+        
+        if user.level < 50 and user.level >= 25:
+            text += "   ⚠️ Силовая броня откроется на 50 уровне\n"
+        elif user.level < 25:
+            text += "   ⚠️ Тяжёлая броня откроется на 25 уровне\n"
+        
+        text += "\n"
+        
+        # ===== ОРУЖИЕ =====
+        text += "*⚔️ ОРУЖИЕ*\n"
+        
+        if user.level >= 1:
+            text += "• 🔫 *Ружьё* (300) — 75/20/4/1%\n"
+        if user.level >= 10:
+            text += "• 🎣 *Гарпун* (500) — 70/20/9/1% (10 ур)\n"
+        if user.level >= 25:
+            text += "• 🔫 *Винтовка* (5000) — 50/30/15/5% (25 ур)\n"
+        if user.level >= 50:
+            text += "• ⚡ *Винтовка Гаусса* (20000) — 40/25/20/15% (50 ур)\n"
+        
+        if user.level < 50 and user.level >= 25:
+            text += "   ⚠️ Гаусс откроется на 50 уровне\n"
+        elif user.level < 25:
+            text += "   ⚠️ Винтовка откроется на 25 уровне\n"
+        
+        text += "\n"
+        
+        # ===== РАСХОДНИКИ =====
+        text += "*💊 РАСХОДНИКИ*\n"
+        text += "• 💊 *Аптечка* (125) — +25% к шансу выжить\n"
+        text += "• ⚡ *Энергетик* (250) — +10% выживание, +5% RC, +25% RF, +100% кристаллы (6ч)\n"
+        text += "• ⏱️ *Редуктор* (1250) — ускоряет восстановление сбора вдвое (3д)\n\n"
+        
+        # ===== ЛИМИТЫ (если есть) =====
+        text += "*📦 ЛИМИТЫ (на 6 часов)*\n"
+        text += "• Броня3 — 10 шт\n"
+        text += "• Броня4 — 7 шт\n"
+        text += "• Броня5 — 5 шт\n"
+        text += "• Винтовка — 7 шт\n"
+        text += "• Гаусс — 5 шт\n"
+        text += "• Аптечка — 25 шт\n"
+        text += "• Редуктор — 10 шт\n"
+        text += "• Энергетик — 15 шт\n\n"
+        
+        text += "📝 */buy [товар] [кол-во]* — купить\n"
+        text += "🏷️ */sale* — распродажи (админ)"
+        
+        await send_to_private(update, context, text)
+        
+    except Exception as e:
+        logger.error(f"Error in shop: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Купить предмет с учётом лимитов и скидок"""
