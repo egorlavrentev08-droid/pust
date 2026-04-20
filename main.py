@@ -41,7 +41,12 @@ scheduler = AsyncIOScheduler()
 
 def register_handlers(app):
     """Регистрация всех обработчиков команд"""
-    
+
+    # Инвентарь
+    app.add_handler(CommandHandler("inv", inv))
+
+    # Классы  
+    app.add_handler(CommandHandler("class", class_command))
     # Основные команды пользователя
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
