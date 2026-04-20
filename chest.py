@@ -1,6 +1,8 @@
 # chest.py - Сундуки и фабрики
 # Версия: 2.0.0
 
+from telegram import Update
+from telegram.ext import ContextTypes
 from config import logger, FACTORIES
 from core import send_to_private, is_admin
 from database import Session, User
