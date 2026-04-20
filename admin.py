@@ -1,48 +1,27 @@
 # admin.py - Админ-панель
 # Версия: 2.0.0
 
+import json
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
+
+# Импорты из config
 from config import logger, MAX_LEVEL, get_exp_for_level, ADMIN_CODE, SUPER_ADMIN_IDS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT
+
+# Импорты из core
 from core import send_to_private, is_admin
+
+# Импорты из database
 from database import Session, User, Clan
+
+# Импорты из utils
 from utils import add_item_to_inventory, remove_item_from_inventory, get_item_count
+
 
 # ==================== ВЫДАЧА ПРАВ ====================
 
-# ==================== СПИСОК ИГРОКОВ (АДМИН) ====================
-
-async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Список всех игроков (админ)"""
-    if not await is_admin(update, context):
-        await update.message.reply_text("❌ Нет прав!")
-        return
-    session = Session()
-    try:
-        users = session.query(User).order_by(User.level.desc()).all()
-        if not users:
-            await update.message.reply_text("📋 *Нет игроков*", parse_mode='Markdown')
-            return
-        text = "👥 *Список игроков*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        for i, u in enumerate(users, 1):
-            clan_name = "—"
-            if u.clan_id:
-                clan = session.query(Clan).filter_by(id=u.clan_id).first()
-                if clan:
-                    clan_name = clan.name
-            text += f"{i}. *{u.username or f'ID:{u.user_id}'}* — ур.{u.level}, RC:{u.radcoins:.0f}, 🏰{clan_name}\n"
-            if len(text) > 3500:
-                await update.message.reply_text(text, parse_mode='Markdown')
-                text = ""
-        if text:
-            await update.message.reply_text(text, parse_mode='Markdown')
-    except Exception as e:
-        logger.error(f"Error in admin_players: {e}")
-        await update.message.reply_text("❌ Ошибка")
-    finally:
-        Session.remove()
-        
-        async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получить админ-права по коду"""
     if not context.args:
         await update.message.reply_text("❌ /givemeplsadmin [код]")
@@ -65,6 +44,7 @@ async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             Session.remove()
     else:
         await update.message.reply_text("❌ *Неверный код!*", parse_mode='Markdown')
+
 
 # ==================== УПРАВЛЕНИЕ РЕСУРСАМИ ====================
 
@@ -97,7 +77,6 @@ async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif resource == 'RF':
             user.radfragments += amount
         elif resource == 'RCR':
-            # Кристаллы идут в казну клана, если игрок в клане
             if user.clan_id:
                 clan = session.query(Clan).filter_by(id=user.clan_id).first()
                 if clan:
@@ -130,6 +109,7 @@ async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 async def admin_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Забрать ресурсы у игрока"""
@@ -182,6 +162,7 @@ async def admin_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 async def admin_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Установить уровень игроку"""
     if not await is_admin(update, context):
@@ -216,6 +197,7 @@ async def admin_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== УПРАВЛЕНИЕ КУЛДАУНАМИ ====================
 
@@ -256,6 +238,7 @@ async def admin_cd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 async def admin_resethunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сбросить кулдаун охоты"""
     if not await is_admin(update, context):
@@ -280,6 +263,7 @@ async def admin_resethunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== УПРАВЛЕНИЕ ПРЕДМЕТАМИ ====================
 
@@ -343,6 +327,7 @@ async def admin_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 async def admin_pets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Управление питомцами"""
     if not await is_admin(update, context):
@@ -387,6 +372,7 @@ async def admin_pets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== УПРАВЛЕНИЕ АДМИНАМИ ====================
 
@@ -471,6 +457,7 @@ async def admin_manage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 async def admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Список администраторов (для всех)"""
     session = Session()
@@ -490,6 +477,7 @@ async def admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== УПРАВЛЕНИЕ КЛАССАМИ ====================
 
@@ -545,6 +533,7 @@ async def admin_classes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== УПРАВЛЕНИЕ СУНДУКАМИ ====================
 
@@ -606,6 +595,7 @@ async def gchest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 # ==================== РАССЫЛКИ ====================
 
 async def call(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -635,6 +625,7 @@ async def call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 async def lscall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Личная рассылка игроку"""
     if not await is_admin(update, context):
@@ -659,6 +650,7 @@ async def lscall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== УПРАВЛЕНИЕ ВИДИМОСТЬЮ В ТОПАХ ====================
 
@@ -694,6 +686,7 @@ async def admin_hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
 
 # ==================== ТАБЛИЦА ЛИДЕРОВ ====================
 
@@ -758,6 +751,7 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         Session.remove()
 
+
 # ==================== ФАЗЫ ПУСТОШИ ====================
 
 async def admin_phase(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -778,6 +772,7 @@ async def admin_phase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🌍 *Фаза изменена на {phases[phase]}*", parse_mode='Markdown')
     except ValueError:
         await update.message.reply_text("❌ Введите число")
+
 
 # ==================== НАСТРОЙКА КАЗИНО (ТОЛЬКО ГЛАВНЫЙ АДМИН) ====================
 
@@ -928,6 +923,7 @@ async def acasino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Используйте: public, private, reset, stats")
 
+
 # ==================== СОВЕТЫ ====================
 
 async def advice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -952,6 +948,7 @@ async def advice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await send_to_private(update, context, text)
 
+
 async def advice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик советов"""
     if not context.args:
@@ -974,3 +971,36 @@ async def advice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'сундуки': "🎁 *СУНДУКИ*\n\n/chest open [common/rare/epic/mythic/legendary]"
     }
     await send_to_private(update, context, tips.get(topic, "❌ Неизвестный раздел. Используйте /advice"))
+
+
+# ==================== СПИСОК ИГРОКОВ (АДМИН) ====================
+
+async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Список всех игроков (админ)"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    session = Session()
+    try:
+        users = session.query(User).order_by(User.level.desc()).all()
+        if not users:
+            await update.message.reply_text("📋 *Нет игроков*", parse_mode='Markdown')
+            return
+        text = "👥 *Список игроков*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        for i, u in enumerate(users, 1):
+            clan_name = "—"
+            if u.clan_id:
+                clan = session.query(Clan).filter_by(id=u.clan_id).first()
+                if clan:
+                    clan_name = clan.name
+            text += f"{i}. *{u.username or f'ID:{u.user_id}'}* — ур.{u.level}, RC:{u.radcoins:.0f}, 🏰{clan_name}\n"
+            if len(text) > 3500:
+                await update.message.reply_text(text, parse_mode='Markdown')
+                text = ""
+        if text:
+            await update.message.reply_text(text, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in admin_players: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
