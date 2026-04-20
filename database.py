@@ -14,6 +14,34 @@ Session = scoped_session(sessionmaker(bind=engine))
 # ==================== КОНСТАНТЫ (дублируем, чтобы не было циклических импортов) ====================
 SUPER_ADMIN_IDS = [6595788533]
 
+# ==================== МИГРАЦИИ БАЗЫ ДАННЫХ ====================
+
+def migrate_db():
+    """Автоматическое добавление новых колонок при обновлении"""
+    from sqlalchemy import inspect, text
+    
+    engine = create_engine('sqlite:///radcoin_bot.db')
+    inspector = inspect(engine)
+    
+    # Список колонок, которые нужно добавить в таблицу users
+    columns_to_add = {
+        'energy_drink_stacks': 'INTEGER DEFAULT 0',
+        'reducer_stacks': 'INTEGER DEFAULT 0',
+    }
+    
+    # Проверяем существующие колонки
+    existing_columns = [col['name'] for col in inspector.get_columns('users')]
+    
+    with engine.connect() as conn:
+        for col_name, col_type in columns_to_add.items():
+            if col_name not in existing_columns:
+                try:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                    conn.commit()
+                    print(f"✅ Добавлена колонка: {col_name}")
+                except Exception as e:
+                    print(f"⚠️ Ошибка при добавлении {col_name}: {e}")
+                    
 # ==================== МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ ====================
 
 class User(Base):
@@ -127,11 +155,11 @@ class Clan(Base):
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
 def init_db():
-    """Создание таблиц"""
+    """Создание таблиц и миграция"""
     Base.metadata.create_all(engine)
+    migrate_db()  # <-- Добавить эту строку
     print("✅ База данных инициализирована")
-
-
+    
 def init_super_admin():
     """Добавление главных администраторов"""
     session = Session()
