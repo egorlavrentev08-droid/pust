@@ -1,13 +1,10 @@
 # user.py - Команды пользователя
 # Версия: 2.0.0
 
-from datetime import datetime
-from telegram import Update
-from telegram.ext import ContextTypes
-from core import logger, MAX_LEVEL, get_exp_for_level, send_to_private
+from config import logger, MAX_LEVEL, get_exp_for_level
+from core import send_to_private
 from database import Session, User, Clan
-from utils import get_equipped, get_inventory
-
+from utils import get_equipped
 # ==================== ПРОФИЛЬ ====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
