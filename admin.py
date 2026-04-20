@@ -1,12 +1,12 @@
 # admin.py - Админ-панель
 # Версия: 2.0.0
 
-import random
-import json
-from datetime import datetime, timedelta
-from telegram import Update
-from telegram.ext import ContextTypes
-
+from admin import (
+    admin_giveme, admin_phase, admin_give, admin_take, admin_setlevel,
+    admin_cd, admin_resethunt, admin_item, admin_pets, admin_manage, admins,
+    admin_classes, call, lscall, admin_hide, top_command, acasino,
+    advice_handler, gchest, admin_players, sale
+)
 # Импорты из config
 from config import logger, MAX_LEVEL, get_exp_for_level, ADMIN_CODE, SUPER_ADMIN_IDS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT
 
