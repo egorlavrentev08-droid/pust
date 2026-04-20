@@ -1,6 +1,8 @@
 # admin.py - Админ-панель
 # Версия: 2.0.0
 
+from telegram import Update
+from telegram.ext import ContextTypes
 from config import logger, MAX_LEVEL, get_exp_for_level, ADMIN_CODE, SUPER_ADMIN_IDS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT
 from core import send_to_private, is_admin
 from database import Session, User, Clan
