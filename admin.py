@@ -1,13 +1,10 @@
 # admin.py - Админ-панель
 # Версия: 2.0.0
 
-import json
-from datetime import datetime, timedelta
-from telegram import Update
-from telegram.ext import ContextTypes
-from core import logger, MAX_LEVEL, get_exp_for_level, ADMIN_CODE, SUPER_ADMIN_IDS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT, send_to_private
+from config import logger, MAX_LEVEL, get_exp_for_level, ADMIN_CODE, SUPER_ADMIN_IDS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT
+from core import send_to_private, is_admin
 from database import Session, User, Clan
-from utils import is_admin, add_item_to_inventory, remove_item_from_inventory, get_item_count
+from utils import add_item_to_inventory, remove_item_from_inventory, get_item_count
 
 # ==================== ВЫДАЧА ПРАВ ====================
 
