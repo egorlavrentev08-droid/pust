@@ -1,6 +1,7 @@
 # money.py - Экономика и магазин
 # Версия: 2.0.0
 
+import random
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import logger, MAX_MEDKITS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT, CASINO_MIN_BET, CASINO_MAX_BET
