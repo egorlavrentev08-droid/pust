@@ -18,7 +18,43 @@ from database import Session, User
 # Импорты из utils
 from utils import get_inventory, get_equipped, get_item_count, add_item_to_inventory, remove_item_from_inventory, check_achievements, save_equipped
 
+import json
+from datetime import datetime, timedelta
+from config import SHOP_LIMITS, SHOP_RESET_HOURS
 
+def check_shop_limit(user, item, count, session, now):
+    """Проверяет лимит товара в магазине.
+    Возвращает: (можно_купить, сообщение_об_ошибке)"""
+    
+    if item not in SHOP_LIMITS:
+        return True, None
+    
+    # Загружаем покупки
+    purchases = json.loads(user.shop_purchases) if user.shop_purchases else {}
+    
+    # Проверяем, нужно ли сбросить лимиты
+    if user.last_shop_reset:
+        if now - user.last_shop_reset > timedelta(hours=SHOP_RESET_HOURS):
+            purchases = {}
+            user.shop_purchases = '{}'
+            user.last_shop_reset = now
+            session.commit()
+    else:
+        user.last_shop_reset = now
+        session.commit()
+    
+    bought = purchases.get(item, 0)
+    limit = SHOP_LIMITS[item]
+    available = limit - bought
+    
+    if count > available:
+        return False, f"❌ Лимит на {item}: осталось {available} шт (обновление через {SHOP_RESET_HOURS}ч)"
+    
+    purchases[item] = bought + count
+    user.shop_purchases = json.dumps(purchases)
+    session.commit()
+    
+    return True, None
 # ==================== ИНВЕНТАРЬ ====================
 
 async def use_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
