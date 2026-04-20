@@ -1,14 +1,10 @@
 # money.py - Экономика и магазин
 # Версия: 2.0.0
 
-import random
-from datetime import datetime, timedelta
-from telegram import Update
-from telegram.ext import ContextTypes
-from core import logger, MAX_MEDKITS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT, CASINO_MIN_BET, CASINO_MAX_BET, send_to_private
+from config import logger, MAX_MEDKITS, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT, CASINO_MIN_BET, CASINO_MAX_BET
+from core import send_to_private
 from database import Session, User
 from utils import get_inventory, get_equipped, get_item_count, add_item_to_inventory, remove_item_from_inventory, check_achievements
-
 # ==================== МАГАЗИН ====================
 
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
