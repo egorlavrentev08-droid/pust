@@ -102,6 +102,12 @@ class User(Base):
     casino_chance = Column(Integer, nullable=True)      # NULL = используется публичный
     casino_cash_mult = Column(Integer, nullable=True)   # NULL = используется публичный
 
+    # Добавить после existing полей:
+    # Эффекты (для /use)
+    energy_drink_until = Column(DateTime, nullable=True)   # до какого времени действует энергетик
+    cooldown_reducer_until = Column(DateTime, nullable=True)  # до какого времени ускорен сбор
+    energy_drink_stacks = Column(Integer, default=0)       # количество активированных энергетиков (для отображения)
+    reducer_stacks = Column(Integer, default=0)            # количество активированных редукторов
 
 # ==================== МОДЕЛЬ КЛАНА ====================
 
