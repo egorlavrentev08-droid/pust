@@ -1,6 +1,8 @@
 # core.py - Ядро бота (без шедулера и циклических зависимостей)
 # Версия: 2.0.0
 
+from telegram import Update
+from telegram.ext import ContextTypes
 import os
 import shutil
 from datetime import datetime
