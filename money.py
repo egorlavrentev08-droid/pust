@@ -190,6 +190,26 @@ async def inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'энергетик': '⚡ Энергетик',
             'редуктор': '⏱️ Редуктор'
         }
+
+        # Активные эффекты
+text += "\n*⚡ АКТИВНЫЕ ЭФФЕКТЫ*\n"
+now = datetime.now()
+
+if user.energy_drink_until and user.energy_drink_until > now:
+    remaining = user.energy_drink_until - now
+    hours = remaining.seconds // 3600
+    minutes = (remaining.seconds % 3600) // 60
+    text += f"⚡ *Энергетик* — {hours}ч {minutes}мин (стеков: {user.energy_drink_stacks})\n"
+else:
+    text += "⚡ Энергетик — не активен\n"
+
+if user.cooldown_reducer_until and user.cooldown_reducer_until > now:
+    remaining = user.cooldown_reducer_until - now
+    days = remaining.days
+    hours = remaining.seconds // 3600
+    text += f"⏱️ *Редуктор* — {days}д {hours}ч (стеков: {user.reducer_stacks})\n"
+else:
+    text += "⏱️ Редуктор — не активен\n"
         
         for item in inventory:
             name = item['item']
