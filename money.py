@@ -312,17 +312,18 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Купить предмет"""
+    """Купить предмет с учётом лимитов и скидок"""
     if not context.args:
         await update.message.reply_text("❌ /buy [товар] [кол-во]")
         return
+    
     item = context.args[0].lower()
     count = 1
     if len(context.args) > 1:
         try:
             count = int(context.args[1])
             if count <= 0 or count > 100:
-                await update.message.reply_text("❌ 1-100")
+                await update.message.reply_text("❌ 1-100 штук за раз")
                 return
         except ValueError:
             await update.message.reply_text("❌ Введите число")
@@ -335,6 +336,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ /start")
             return
         
+        # Цены на товары
         prices = {
             'аптечка': 125, 'энергетик': 250, 'редуктор': 1250,
             'ружье': 300, 'гарпун': 500, 'винтовка': 5000, 'гаусс': 20000,
@@ -346,30 +348,61 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Товар '{item}' не найден")
             return
         
+        # Проверка уровня для некоторых товаров
+        if item == 'гарпун' and user.level < 10:
+            await update.message.reply_text("❌ Гарпун доступен с 10 уровня!")
+            return
+        if item == 'винтовка' and user.level < 25:
+            await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
+            return
+        if item == 'гаусс' and user.level < 50:
+            await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
+            return
+        if item == 'броня2' and user.level < 10:
+            await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
+            return
+        if item == 'броня4' and user.level < 25:
+            await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
+            return
+        if item == 'броня5' and user.level < 50:
+            await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
+            return
+        
+        # ===== ПРОВЕРКА ЛИМИТА ТОВАРА =====
+        now = datetime.now()
+        can_buy, limit_msg = check_shop_limit(user, item, count, session, now)
+        if not can_buy:
+            await update.message.reply_text(limit_msg, parse_mode='Markdown')
+            return
+        
+        # Расчёт стоимости со скидкой
         total = prices[item] * count
+        discount = context.bot_data.get('sale_discount', 0)
+        sale_until = context.bot_data.get('sale_until')
+        
+        if discount > 0 and sale_until and sale_until > now:
+            old_total = total
+            total = int(total * (100 - discount) / 100)
+            discount_msg = f"\n🏷️ Скидка {discount}%: {old_total} → {total} RC!"
+        else:
+            discount_msg = ""
+        
+        # Проверка денег
         if user.radcoins < total:
             await update.message.reply_text(f"❌ Нужно {total} RC, у вас {user.radcoins:.0f}")
             return
         
+        # Списание денег
         user.radcoins -= total
-        now = datetime.now()
         
+        # Выдача предмета
         if item == 'ружье':
             add_item_to_inventory(user, 'ружье', count)
         elif item == 'гарпун':
-            if user.level < 10:
-                await update.message.reply_text("❌ Гарпун доступен с 10 уровня!")
-                return
             add_item_to_inventory(user, 'гарпун', count)
         elif item == 'винтовка':
-            if user.level < 25:
-                await update.message.reply_text("❌ Винтовка доступна с 25 уровня!")
-                return
             add_item_to_inventory(user, 'винтовка', count)
         elif item == 'гаусс':
-            if user.level < 50:
-                await update.message.reply_text("❌ Винтовка Гаусса доступна с 50 уровня!")
-                return
             add_item_to_inventory(user, 'гаусс', count)
         elif item == 'аптечка':
             add_item_to_inventory(user, 'аптечка', count)
@@ -380,28 +413,38 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif item == 'броня1':
             add_item_to_inventory(user, 'броня1', count)
         elif item == 'броня2':
-            if user.level < 10:
-                await update.message.reply_text("❌ Утяжеленная броня доступна с 10 уровня!")
-                return
             add_item_to_inventory(user, 'броня2', count)
         elif item == 'броня3':
             add_item_to_inventory(user, 'броня3', count)
         elif item == 'броня4':
-            if user.level < 25:
-                await update.message.reply_text("❌ Тяжёлая броня доступна с 25 уровня!")
-                return
             add_item_to_inventory(user, 'броня4', count)
         elif item == 'броня5':
-            if user.level < 50:
-                await update.message.reply_text("❌ Силовая броня доступна с 50 уровня!")
-                return
             add_item_to_inventory(user, 'броня5', count)
         
         user.total_purchases += count
         check_achievements(user, session)
         session.commit()
         
-        await update.message.reply_text(f"✅ *Куплено {item} x{count}*\n💰 -{total} RC\n☢️ Осталось: {user.radcoins:.0f} RC", parse_mode='Markdown')
+        # Формируем сообщение
+        item_names = {
+            'аптечка': '💊 Аптечка', 'энергетик': '⚡ Энергетик', 'редуктор': '⏱️ Редуктор',
+            'ружье': '🔫 Ружьё', 'гарпун': '🎣 Гарпун', 'винтовка': '🔫 Винтовка', 'гаусс': '⚡ Винтовка Гаусса',
+            'броня1': '🟢 Лёгкая броня', 'броня2': '🔵 Утяжеленная броня', 'броня3': '🟣 Тактическая броня',
+            'броня4': '🟠 Тяжёлая броня', 'броня5': '🔴 Силовая броня'
+        }
+        
+        msg = f"✅ *Куплено {item_names.get(item, item)} x{count}*\n💰 -{total} RC{discount_msg}\n☢️ Осталось: {user.radcoins:.0f} RC"
+        
+        # Показываем остаток лимита, если товар лимитирован
+        if item in SHOP_LIMITS:
+            purchases = json.loads(user.shop_purchases) if user.shop_purchases else {}
+            bought = purchases.get(item, 0)
+            limit = SHOP_LIMITS[item]
+            available = limit - bought
+            msg += f"\n📦 Осталось по лимиту: {available} шт (обновление через {SHOP_RESET_HOURS}ч)"
+        
+        await update.message.reply_text(msg, parse_mode='Markdown')
+        
     except Exception as e:
         logger.error(f"Error in buy: {e}")
         session.rollback()
