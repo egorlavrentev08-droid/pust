@@ -1,6 +1,7 @@
 # collect.py - Сбор, охота, локации, питомцы
 # Версия: 2.0.0
 
+import random
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
