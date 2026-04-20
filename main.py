@@ -25,12 +25,11 @@ from clan import clan_command, radion, radio, radio_register_group, aradio
 # Импорты команд из chest
 from chest import chest_command, factory, afactory
 
-# Импорты команд из admin
 from admin import (
     admin_giveme, admin_phase, admin_give, admin_take, admin_setlevel,
     admin_cd, admin_resethunt, admin_item, admin_pets, admin_manage, admins,
     admin_classes, call, lscall, admin_hide, top_command, acasino,
-    advice_handler, gchest, admin_players
+    advice_handler, gchest, admin_players, sale
 )
 
 # Создаём шедулер
