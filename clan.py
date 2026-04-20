@@ -1,6 +1,8 @@
 # clan.py - Кланы и радио
 # Версия: 2.0.0
 
+from telegram import Update
+from telegram.ext import ContextTypes
 from config import logger, MAX_CLAN_BONUS
 from core import send_to_private, is_admin
 from database import Session, User, Clan
