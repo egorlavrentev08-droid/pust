@@ -305,8 +305,22 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
             minutes = (remaining.seconds % 3600) // 60
             sale_line = f"\n\n🔥 *РАСПРОДАЖА {discount}%!* Осталось: {hours}ч {minutes}мин 🔥"
         
+        # ===== РАСЧЁТ ВРЕМЕНИ ДО ОБНОВЛЕНИЯ ЛИМИТОВ =====
+        reset_time = ""
+        if user.last_shop_reset:
+            next_reset = user.last_shop_reset + timedelta(hours=SHOP_RESET_HOURS)
+            if next_reset > now:
+                remaining = next_reset - now
+                hours = remaining.seconds // 3600
+                minutes = (remaining.seconds % 3600) // 60
+                reset_time = f"\n🔄 *Поставка товаров через:* {hours}ч {minutes}мин"
+            else:
+                reset_time = "\n🔄 *Новые поставки уже доступны!*"
+        else:
+            reset_time = "\n🔄 *Новые поставки уже доступны!*"
+        
         text = f"🛒 *Магазин Пустоши*{sale_line}\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        text += f"👤 *Ваш уровень:* {user.level}\n"
+        text += f"👤 *Ваш уровень:* {user.level}{reset_time}\n"
         text += "💰 *Цены в РадКоинах (RC)*\n\n"
         
         # ===== БРОНЯ =====
@@ -355,18 +369,31 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "• ⚡ *Энергетик* (250) — +10% выживание, +5% RC, +25% RF, +100% кристаллы (6ч)\n"
         text += "• ⏱️ *Редуктор* (1250) — ускоряет восстановление сбора вдвое (3д)\n\n"
         
-        # ===== ЛИМИТЫ (если есть) =====
-        text += "*📦 ЛИМИТЫ (на 6 часов)*\n"
-        text += "• Броня3 — 10 шт\n"
-        text += "• Броня4 — 7 шт\n"
-        text += "• Броня5 — 5 шт\n"
-        text += "• Винтовка — 7 шт\n"
-        text += "• Гаусс — 5 шт\n"
-        text += "• Аптечка — 25 шт\n"
-        text += "• Редуктор — 10 шт\n"
-        text += "• Энергетик — 15 шт\n\n"
+        # ===== ЛИМИТЫ =====
+        # Загружаем текущие покупки пользователя
+        purchases = json.loads(user.shop_purchases) if user.shop_purchases else {}
         
-        text += "📝 */buy [товар] [кол-во]* — купить\n"
+        text += "*📦 ЛИМИТЫ (на 6 часов)*\n"
+        
+        limits_display = {
+            'броня3': ('🟣 Тактическая броня', 10),
+            'броня4': ('🟠 Тяжёлая броня', 7),
+            'броня5': ('🔴 Силовая броня', 5),
+            'винтовка': ('🔫 Винтовка', 7),
+            'гаусс': ('⚡ Винтовка Гаусса', 5),
+            'аптечка': ('💊 Аптечка', 25),
+            'редуктор': ('⏱️ Редуктор', 10),
+            'энергетик': ('⚡ Энергетик', 15),
+        }
+        
+        for key, (name, limit) in limits_display.items():
+            bought = purchases.get(key, 0)
+            available = limit - bought
+            if available < 0:
+                available = 0
+            text += f"• {name} — {available}/{limit} шт\n"
+        
+        text += "\n📝 */buy [товар] [кол-во]* — купить\n"
         text += "🏷️ */sale* — распродажи (админ)"
         
         await send_to_private(update, context, text)
