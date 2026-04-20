@@ -10,7 +10,39 @@ from utils import add_item_to_inventory, remove_item_from_inventory, get_item_co
 
 # ==================== ВЫДАЧА ПРАВ ====================
 
-async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ==================== СПИСОК ИГРОКОВ (АДМИН) ====================
+
+async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Список всех игроков (админ)"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    session = Session()
+    try:
+        users = session.query(User).order_by(User.level.desc()).all()
+        if not users:
+            await update.message.reply_text("📋 *Нет игроков*", parse_mode='Markdown')
+            return
+        text = "👥 *Список игроков*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        for i, u in enumerate(users, 1):
+            clan_name = "—"
+            if u.clan_id:
+                clan = session.query(Clan).filter_by(id=u.clan_id).first()
+                if clan:
+                    clan_name = clan.name
+            text += f"{i}. *{u.username or f'ID:{u.user_id}'}* — ур.{u.level}, RC:{u.radcoins:.0f}, 🏰{clan_name}\n"
+            if len(text) > 3500:
+                await update.message.reply_text(text, parse_mode='Markdown')
+                text = ""
+        if text:
+            await update.message.reply_text(text, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in admin_players: {e}")
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
+        
+        async def admin_giveme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получить админ-права по коду"""
     if not context.args:
         await update.message.reply_text("❌ /givemeplsadmin [код]")
