@@ -34,7 +34,7 @@ from admin import (
     advice_handler, gchest, admin_players, sale
 )
 
-# Создаём шедулер
+#Создаём шедулер
 scheduler = AsyncIOScheduler()
 
 
@@ -141,8 +141,7 @@ def init_bot_data(app):
     
     logger.info("📦 Данные бота инициализированы")
 
-# Загружаем группы для радио из БД
-await load_radio_groups(app)
+
 # ==================== ЗАПУСК ====================
 
 def main():
