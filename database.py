@@ -207,6 +207,15 @@ def get_user(user_id, username=None):
     finally:
         Session.remove()
 
+# ==================== МОДЕЛЬ РАДИО-ГРУПП ====================
+
+class RadioGroup(Base):
+    __tablename__ = 'radio_groups'
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(Integer, unique=True)
+    chat_title = Column(String, nullable=True)
+    added_at = Column(DateTime, default=datetime.now)
+
 
 # Запускаем инициализацию при импорте
 init_db()
