@@ -14,3 +14,8 @@ if 'chest_legendary' not in existing:
 conn.commit()
 conn.close()
 print("✅ Готово")
+
+# Создание таблицы radio_groups, если её нет
+if not inspector.has_table('radio_groups'):
+    Base.metadata.create_all(engine, tables=[RadioGroup.__table__])
+    print("✅ Создана таблица radio_groups")
