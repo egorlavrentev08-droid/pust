@@ -15,7 +15,7 @@ MAX_LEVEL = 100
 MAX_CLAN_BONUS = 25
 MAX_MEDKITS = 10
 
-#SHOP_LIMITS = {
+SHOP_LIMITS = {
     'броня3': 10,
     'броня4': 7,
     'броня5': 5,
