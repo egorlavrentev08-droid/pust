@@ -171,3 +171,23 @@ def get_user_by_username(session, username):
     """Найти пользователя по username (без учёта регистра)"""
     from sqlalchemy import func
     return session.query(User).filter(func.lower(User.username) == username.lower()).first()
+
+def log_user_action(user, action, amount_rc=0, amount_rf=0, amount_crystals=0, item=None):
+    """Запись действия пользователя в лог"""
+    session = Session()
+    try:
+        log = UserLog(
+            user_id=user.user_id,
+            username=user.username,
+            action=action,
+            amount_rc=amount_rc,
+            amount_rf=amount_rf,
+            amount_crystals=amount_crystals,
+            item=item
+        )
+        session.add(log)
+        session.commit()
+    except Exception as e:
+        logger.error(f"Error logging user action: {e}")
+    finally:
+        Session.remove()
