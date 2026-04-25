@@ -124,7 +124,7 @@ class User(Base):
     amount_crystals = Column(Integer, default=0)
     item = Column(String, nullable=True)  # для покупок/крафта
     timestamp = Column(DateTime, default=datetime.now)
-        
+
 # ==================== МОДЕЛЬ КЛАНА ====================
 
 class Clan(Base):
