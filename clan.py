@@ -697,37 +697,37 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_to_private(update, context, text)
     
     elif action == 'add':
-        groups = context.bot_data.get('radio_groups', set())
-        chat_id = None
-        
-        # Если команда вызвана в группе
-        if update.effective_chat.type in ['group', 'supergroup']:
-            chat_id = update.effective_chat.id
-            await update.message.reply_text(f"✅ Эта группа добавлена в радио!", parse_mode='Markdown')
-        elif len(context.args) >= 2:
-            identifier = context.args[1]
-            if identifier.startswith('@'):
-                try:
-                    chat = await context.bot.get_chat(identifier)
-                    chat_id = chat.id
-                except:
-                    await update.message.reply_text("❌ Не удалось найти чат по ссылке")
-                    return
-            elif identifier.lstrip('-').isdigit():
-    chat_id = int(identifier)
-            else:
-                await update.message.reply_text("❌ Укажите ID чата, ссылку или вызовите команду в самой группе")
-                return
-        else:
-            await update.message.reply_text("❌ /aradio add [ссылка/ID] или вызовите команду в группе")
-            return
-        
-        if chat_id:
-            groups.add(chat_id)
-            context.bot_data['radio_groups'] = groups
-            if update.effective_chat.id != chat_id:
-                await update.message.reply_text(f"✅ Группа `{chat_id}` добавлена в радио", parse_mode='Markdown')
+    groups = context.bot_data.get('radio_groups', set())
+    chat_id = None
     
+    # Если команда вызвана в группе
+    if update.effective_chat.type in ['group', 'supergroup']:
+        chat_id = update.effective_chat.id
+        await update.message.reply_text(f"✅ Эта группа добавлена в радио!", parse_mode='Markdown')
+    elif len(context.args) >= 2:
+        identifier = context.args[1]
+        if identifier.startswith('@'):
+            try:
+                chat = await context.bot.get_chat(identifier)
+                chat_id = chat.id
+            except:
+                await update.message.reply_text("❌ Не удалось найти чат по ссылке")
+                return
+        elif identifier.lstrip('-').isdigit():
+            chat_id = int(identifier)
+        else:
+            await update.message.reply_text("❌ Укажите ID чата, ссылку или вызовите команду в самой группе")
+            return
+    else:
+        await update.message.reply_text("❌ /aradio add [ссылка/ID] или вызовите команду в группе")
+        return
+    
+    if chat_id:
+        groups.add(chat_id)
+        context.bot_data['radio_groups'] = groups
+        if update.effective_chat.id != chat_id:
+            await update.message.reply_text(f"✅ Группа `{chat_id}` добавлена в радио", parse_mode='Markdown')
+            
     elif action == 'clear':
         groups = context.bot_data.get('radio_groups', set())
         chat_id = None
