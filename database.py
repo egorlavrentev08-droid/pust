@@ -111,7 +111,20 @@ class User(Base):
     shop_purchases = Column(String, default='{}')          # JSON {"товар": количество_купленных}
     last_shop_reset = Column(DateTime, nullable=True)      # время последнего сброса лимитов
 
+    # Логи Игроков
 
+    class UserLog(Base):
+    __tablename__ = 'user_logs'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'))
+    username = Column(String)
+    action = Column(String)  # collect, hunt, casino, exchange, shop, factory, etc.
+    amount_rc = Column(Float, default=0)
+    amount_rf = Column(Integer, default=0)
+    amount_crystals = Column(Integer, default=0)
+    item = Column(String, nullable=True)  # для покупок/крафта
+    timestamp = Column(DateTime, default=datetime.now)
+        
 # ==================== МОДЕЛЬ КЛАНА ====================
 
 class Clan(Base):
