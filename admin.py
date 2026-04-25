@@ -1254,3 +1254,109 @@ async def admin_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка")
     finally:
         Session.remove()
+
+async def admin_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Полный сброс игрока (админ)"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ /reset @ник")
+        return
+    
+    username = context.args[0].lstrip('@')
+    session = Session()
+    try:
+        user = session.query(User).filter_by(username=username).first()
+        if not user:
+            await update.message.reply_text(f"❌ @{username} не найден")
+            return
+        
+        # Сохраняем имя для лога
+        old_username = user.username
+        old_clan = None
+        if user.clan_id:
+            clan = session.query(Clan).filter_by(id=user.clan_id).first()
+            old_clan = clan.name if clan else None
+        
+        # Сбрасываем всё
+        user.radcoins = 0
+        user.radfragments = 0
+        user.radcrystals = 0
+        user.level = 1
+        user.experience = 0
+        user.total_collects = 0
+        user.total_rc_earned = 0
+        user.best_collect = 0
+        user.mutants_killed = 0
+        user.mutants_lvl3 = 0
+        user.bosses_killed = 0
+        user.deaths = 0
+        user.crit_collects = 0
+        user.daily_streak = 0
+        user.last_collect_date = None
+        user.next_collection_time = None
+        user.last_hunt = None
+        user.cooldown_reducer_until = None
+        user.energy_drink_until = None
+        user.armor_type = None
+        user.weapon = None
+        user.medkits = 0
+        user.pet = None
+        user.achievements = '[]'
+        user.total_purchases = 0
+        user.notifications_enabled = False
+        user.location = 'normal'
+        user.user_class = 'stalker'
+        user.last_free_class_change = None
+        user.radio_active = False
+        user.radio_code = None
+        user.radio_banned = False
+        user.inventory = '[]'
+        user.equipped = '{}'
+        
+        if user.clan_id:
+            user.clan_id = None
+        
+        # Сбрасываем сундуки
+        user.chest_common = 0
+        user.chest_rare = 0
+        user.chest_epic = 0
+        user.chest_mythic = 0
+        user.chest_legendary = 0
+        
+        # Сбрасываем лимиты магазина
+        user.shop_purchases = '{}'
+        user.last_shop_reset = None
+        
+        # Сбрасываем эффекты
+        user.energy_drink_stacks = 0
+        user.reducer_stacks = 0
+        
+        session.commit()
+        
+        # Логируем сброс
+        log_user_action(
+            user=user,
+            action='admin_reset',
+            item=f"сброшен админом {update.effective_user.username}"
+        )
+        
+        await update.message.reply_text(f"🔄 *@{username} сброшен!*", parse_mode='Markdown')
+        
+        try:
+            await context.bot.send_message(
+                user.user_id,
+                "⚠️ *Ваш аккаунт был сброшен администратором!*\n\n"
+                "Все ресурсы, уровень, инвентарь и прогресс обнулены.",
+                parse_mode='Markdown'
+            )
+        except:
+            pass
+    except Exception as e:
+        logger.error(f"Error in admin_reset: {e}")
+        session.rollback()
+        await update.message.reply_text("❌ Ошибка")
+    finally:
+        Session.remove()
