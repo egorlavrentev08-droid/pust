@@ -713,8 +713,8 @@ async def aradio(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except:
                     await update.message.reply_text("❌ Не удалось найти чат по ссылке")
                     return
-            elif identifier.isdigit():
-                chat_id = int(identifier)
+            elif identifier.lstrip('-').isdigit():
+    chat_id = int(identifier)
             else:
                 await update.message.reply_text("❌ Укажите ID чата, ссылку или вызовите команду в самой группе")
                 return
