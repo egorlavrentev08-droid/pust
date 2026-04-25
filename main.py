@@ -118,7 +118,8 @@ def register_handlers(app):
     app.add_handler(CommandHandler("gchest", gchest))
     app.add_handler(CommandHandler("acasino", acasino))
     app.add_handler(CommandHandler("check", check_user))
-
+    app.add_handler(CommandHandler("reset", admin_reset))
+    
     # Обработчик для регистрации групп в радио
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, radio_register_group))
 
