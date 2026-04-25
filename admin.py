@@ -13,7 +13,7 @@ from config import logger, MAX_LEVEL, get_exp_for_level, ADMIN_CODE, SUPER_ADMIN
 from core import send_to_private, is_admin
 
 # Импорты из database
-from database import Session, User, Clan
+from database import Session, User, Clan, UserLog
 
 # Импорты из utils
 from utils import add_item_to_inventory, remove_item_from_inventory, get_item_count
