@@ -121,7 +121,9 @@ def register_handlers(app):
     # Обработчик для регистрации групп в радио
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, radio_register_group))
 
+    from admin import (...) check_user
 
+app.add_handler(CommandHandler("check", check_user))
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
 def init_bot_data(app):
@@ -140,8 +142,6 @@ def init_bot_data(app):
     app.bot_data['sale_until'] = None
     
     logger.info("📦 Данные бота инициализированы")
-
-
 # ==================== ЗАПУСК ====================
 
 def main():
