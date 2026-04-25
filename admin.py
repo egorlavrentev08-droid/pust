@@ -1075,25 +1075,35 @@ async def sale(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (ValueError, IndexError):
         await update.message.reply_text("❌ Пример: `/sale 50 24`", parse_mode='Markdown')
 
+# ==================== КОМАНДА /check ====================
+
 async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка действий пользователя"""
+    """Проверка действий пользователя (админ)"""
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
         return
     
-    if len(context.args) < 2:
+    # Если нет аргументов - показываем справку
+    if len(context.args) < 1:
         await update.message.reply_text(
             "🔍 *Команда /check*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             "/check @ник — последние 25 действий\n"
-            "/check @ник RC — транзакции RC\n"
-            "/check @ник RF — транзакции RF\n"
-            "/check @ник factory — последние действия с бизнесом",
+            "/check @ник rc — транзакции RC\n"
+            "/check @ник rf — транзакции RF\n"
+            "/check @ник crystals — транзакции кристаллов\n"
+            "/check @ник factory — последние действия с бизнесом\n"
+            "/check @ник shop — покупки в магазине\n"
+            "/check @ник craft — крафт предметов\n"
+            "/check @ник hunt — охота на мутантов\n"
+            "/check @ник collect — сбор ресурсов\n"
+            "/check @ник casino — казино\n"
+            "/check @ник exchange — обмен RF на RC",
             parse_mode='Markdown'
         )
         return
     
     username = context.args[0].lstrip('@')
-    flag = context.args[1].upper() if len(context.args) > 1 else None
+    flag = context.args[1].lower() if len(context.args) > 1 else None
     
     session = Session()
     try:
@@ -1102,19 +1112,32 @@ async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Пользователь @{username} не найден")
             return
         
-        logs = session.query(UserLog).filter_by(user_id=user.user_id)
+        # Базовый запрос
+        query = session.query(UserLog).filter_by(user_id=user.user_id)
         
-        if flag == 'RC':
-            logs = logs.filter(UserLog.amount_rc != 0)
-        elif flag == 'RF':
-            logs = logs.filter(UserLog.amount_rf != 0)
-        elif flag == 'FACTORY' or flag == 'factory':
-            logs = logs.filter(UserLog.action == 'factory_money')
-        else:
-            # показываем всё
-            pass
+        # Фильтры по флагам
+        if flag == 'rc':
+            query = query.filter(UserLog.amount_rc != 0)
+        elif flag == 'rf':
+            query = query.filter(UserLog.amount_rf != 0)
+        elif flag == 'crystals':
+            query = query.filter(UserLog.amount_crystals != 0)
+        elif flag == 'factory':
+            query = query.filter(UserLog.action == 'factory_money')
+        elif flag == 'shop':
+            query = query.filter(UserLog.action == 'buy')
+        elif flag == 'craft':
+            query = query.filter(UserLog.action == 'craft')
+        elif flag == 'hunt':
+            query = query.filter(UserLog.action == 'hunt')
+        elif flag == 'collect':
+            query = query.filter(UserLog.action == 'collect')
+        elif flag == 'casino':
+            query = query.filter(UserLog.action == 'casino')
+        elif flag == 'exchange':
+            query = query.filter(UserLog.action == 'exchange')
         
-        logs = logs.order_by(UserLog.timestamp.desc()).limit(25).all()
+        logs = query.order_by(UserLog.timestamp.desc()).limit(25).all()
         
         if not logs:
             await update.message.reply_text(f"📋 Нет действий для @{username}")
@@ -1123,15 +1146,20 @@ async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"📜 *История @{username}* (последние {len(logs)})\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
         for log in logs:
-            time_str = log.timestamp.strftime('%d.%m %H:%M')
+            time_str = log.timestamp.strftime('%d.%m %H:%M:%S')
             if log.amount_rc != 0:
-                text += f"💰 {log.action}: {log.amount_rc:+} RC\n"
+                sign = '+' if log.amount_rc > 0 else ''
+                text += f"💰 [{time_str}] {log.action}: {sign}{log.amount_rc:.0f} RC\n"
             elif log.amount_rf != 0:
-                text += f"☣️ {log.action}: {log.amount_rf:+} RF\n"
+                sign = '+' if log.amount_rf > 0 else ''
+                text += f"☣️ [{time_str}] {log.action}: {sign}{log.amount_rf} RF\n"
+            elif log.amount_crystals != 0:
+                sign = '+' if log.amount_crystals > 0 else ''
+                text += f"💎 [{time_str}] {log.action}: {sign}{log.amount_crystals} кристаллов\n"
             elif log.item:
-                text += f"📦 {log.action}: {log.item}\n"
+                text += f"📦 [{time_str}] {log.action}: {log.item}\n"
             else:
-                text += f"🔄 {log.action}\n"
+                text += f"🔄 [{time_str}] {log.action}\n"
         
         await send_to_private(update, context, text)
     except Exception as e:
