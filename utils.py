@@ -4,10 +4,10 @@
 import json
 import random
 from datetime import datetime, timedelta
+from database import Session, User, UserLog
 
 # Импортируем из config, а не из core!
 from config import logger, MAX_MEDKITS, MAX_LEVEL
-from database import Session, User
 
 # ==================== ИНВЕНТАРЬ ====================
 
@@ -174,6 +174,9 @@ def get_user_by_username(session, username):
 
 def log_user_action(user, action, amount_rc=0, amount_rf=0, amount_crystals=0, item=None):
     """Запись действия пользователя в лог"""
+    from database import Session, UserLog
+    from datetime import datetime
+    
     session = Session()
     try:
         log = UserLog(
@@ -183,11 +186,12 @@ def log_user_action(user, action, amount_rc=0, amount_rf=0, amount_crystals=0, i
             amount_rc=amount_rc,
             amount_rf=amount_rf,
             amount_crystals=amount_crystals,
-            item=item
+            item=item,
+            timestamp=datetime.now()
         )
         session.add(log)
         session.commit()
     except Exception as e:
-        logger.error(f"Error logging user action: {e}")
+        print(f"Error logging user action: {e}")
     finally:
         Session.remove()
