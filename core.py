@@ -1,17 +1,18 @@
 # core.py - Ядро бота (без шедулера и циклических зависимостей)
-# Версия: 2.0.0
+# Версия: 3.0.0
 
-from telegram import Update
-from telegram.ext import ContextTypes
 import os
+import sys
+import glob
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
 
 # Импорты из config и database
-from config import logger, BACKUP_DIR
+from config import logger, BACKUP_DIR, BACKUP_RETENTION_DAYS
 from database import Session, User
+
 
 # ==================== ПРОВЕРКА АДМИНА ====================
 
@@ -30,6 +31,7 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     finally:
         Session.remove()
 
+
 # ==================== ОТПРАВКА В ЛИЧКУ ====================
 
 async def send_to_private(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
@@ -43,78 +45,210 @@ async def send_to_private(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     except Exception as e:
         logger.error(f"Error sending to private: {e}")
 
-# ==================== АВТОБЭКАП ====================
+
+# ==================== СИСТЕМА БЭКАПОВ ====================
+
+def get_latest_backup():
+    """Найти самый свежий бэкап"""
+    if not os.path.exists(BACKUP_DIR):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        return None
+    backups = glob.glob(os.path.join(BACKUP_DIR, "radcoin_bot.db.backup_*.db"))
+    if not backups:
+        return None
+    return max(backups, key=os.path.getctime)
+
+
+def restore_from_backup(backup_path):
+    """Восстановить базу из бэкапа"""
+    try:
+        if not os.path.exists(backup_path):
+            return False
+        shutil.copy2(backup_path, 'radcoin_bot.db')
+        logger.info(f"✅ База данных восстановлена из бэкапа: {backup_path}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка восстановления: {e}")
+        return False
+
+
+def check_and_restore_db():
+    """Проверить базу при запуске и восстановить при необходимости"""
+    # Создаём папку для бэкапов
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    
+    # Если база существует и не пустая — всё ок
+    if os.path.exists('radcoin_bot.db'):
+        if os.path.getsize('radcoin_bot.db') > 0:
+            logger.info("✅ База данных найдена, проверка пройдена")
+            return True
+        else:
+            logger.warning("⚠️ База данных повреждена (0 байт)!")
+    
+    # База отсутствует или повреждена — пробуем восстановить
+    logger.warning("⚠️ База данных отсутствует или повреждена! Пытаюсь восстановить из бэкапа...")
+    
+    latest = get_latest_backup()
+    if latest and restore_from_backup(latest):
+        logger.info("✅ База данных успешно восстановлена из последнего бэкапа")
+        return True
+    
+    # Создаём новую базу
+    logger.warning("⚠️ Бэкапов не найдено. Будет создана новая база данных.")
+    return True  # Пусть создаётся новая
+
 
 def auto_backup():
-    """Автоматическое создание бэкапа базы данных"""
+    """Автоматическое создание бэкапа базы данных (каждые 15 минут)"""
     try:
+        # Создаём папку если её нет
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        
         db_path = 'radcoin_bot.db'
-        if os.path.exists(db_path):
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup_name = f"radcoin_bot.db.backup_{timestamp}.db"
-            backup_path = os.path.join(BACKUP_DIR, backup_name)
-            shutil.copy(db_path, backup_path)
-            backups_list = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith('radcoin_bot.db.backup')])
-            if len(backups_list) > 24:
-                for old_backup in backups_list[:-24]:
-                    os.remove(os.path.join(BACKUP_DIR, old_backup))
-            logger.info(f"✅ Автобэкап: {backup_name}")
+        if not os.path.exists(db_path):
+            logger.warning(f"⚠️ База данных не найдена по пути {db_path}, бэкап не создан")
+            return
+        
+        # Проверяем, что база не пустая
+        if os.path.getsize(db_path) == 0:
+            logger.warning("⚠️ База данных пуста, бэкап не создан")
+            return
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_name = f"radcoin_bot.db.backup_{timestamp}.db"
+        backup_path = os.path.join(BACKUP_DIR, backup_name)
+        shutil.copy2(db_path, backup_path)
+        
+        # Очистка старых бэкапов (оставляем последний всегда)
+        backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "radcoin_bot.db.backup_*.db")))
+        cutoff = datetime.now() - timedelta(days=BACKUP_RETENTION_DAYS)
+        
+        # Не трогаем последний бэкап (индекс -1)
+        for i, backup in enumerate(backups[:-1]):
+            try:
+                # Извлекаем дату из имени файла
+                date_str = backup.split('_')[-1].replace('.db', '')
+                backup_date = datetime.strptime(date_str, '%Y%m%d_%H%M%S')
+                if backup_date < cutoff:
+                    os.remove(backup)
+                    logger.info(f"🗑️ Удалён старый бэкап: {os.path.basename(backup)}")
+            except (ValueError, IndexError) as e:
+                logger.warning(f"⚠️ Не удалось разобрать имя бэкапа: {backup}")
+                continue
+            except Exception as e:
+                logger.error(f"❌ Ошибка при удалении старого бэкапа: {e}")
+        
+        logger.info(f"💾 Автобэкап создан: {backup_name}")
+        
     except Exception as e:
         logger.error(f"❌ Ошибка автобэкапа: {e}")
+
 
 # ==================== КОМАНДЫ БЭКАПОВ ====================
 
 async def backups(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Список бэкапов"""
+    """Список бэкапов (админ)"""
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
         return
+    
     try:
-        backups_list = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith('radcoin_bot.db.backup')])
+        if not os.path.exists(BACKUP_DIR):
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            await update.message.reply_text("📋 *Нет бэкапов*", parse_mode='Markdown')
+            return
+        
+        backups_list = sorted(glob.glob(os.path.join(BACKUP_DIR, "radcoin_bot.db.backup_*.db")))
         if not backups_list:
             await update.message.reply_text("📋 *Нет бэкапов*", parse_mode='Markdown')
             return
+        
         text = "💾 *Список бэкапов*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         for i, backup in enumerate(backups_list[-10:], 1):
-            text += f"{i}. `{backup}`\n"
-        text += "\n📌 /restore [имя] — восстановить\n📌 /backup_now — создать бэкап"
+            backup_name = os.path.basename(backup)
+            # Получаем размер файла
+            size = os.path.getsize(backup) / 1024  # в КБ
+            text += f"{i}. `{backup_name}` — {size:.1f} КБ\n"
+        
+        text += "\n📌 /restore [имя] — восстановить\n📌 /restore_last — восстановить последний\n📌 /backup_now — создать бэкап"
         await update.message.reply_text(text, parse_mode='Markdown')
+        
     except Exception as e:
         logger.error(f"Error in backups: {e}")
         await update.message.reply_text("❌ Ошибка")
 
+
 async def restore_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Восстановить бэкап"""
+    """Восстановить конкретный бэкап (админ)"""
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
         return
+    
     if not context.args:
         await update.message.reply_text("❌ /restore [имя_бэкапа]")
         return
+    
     backup_name = context.args[0]
+    # Защита от path traversal
+    backup_name = os.path.basename(backup_name)
     backup_path = os.path.join(BACKUP_DIR, backup_name)
+    
     if not os.path.exists(backup_path):
-        await update.message.reply_text(f"❌ Бэкап `{backup_name}` не найден!")
+        await update.message.reply_text(f"❌ Бэкап `{backup_name}` не найден!", parse_mode='Markdown')
         return
+    
+    # Сначала создаём бэкап текущей базы (на всякий случай)
     auto_backup()
-    shutil.copy(backup_path, 'radcoin_bot.db')
-    await update.message.reply_text(f"✅ *База восстановлена!* Перезапустите бота.")
-    os._exit(0)
+    
+    if restore_from_backup(backup_path):
+        await update.message.reply_text(f"✅ *База данных восстановлена из бэкапа!*\n🔄 Бот будет перезапущен...", parse_mode='Markdown')
+        os._exit(0)  # Хостинг перезапустит бота
+    else:
+        await update.message.reply_text("❌ *Ошибка восстановления!*", parse_mode='Markdown')
 
-async def backup_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Создать бэкап сейчас"""
+
+async def restore_last(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Восстановить последний бэкап (админ)"""
     if not await is_admin(update, context):
         await update.message.reply_text("❌ Нет прав!")
         return
+    
+    latest = get_latest_backup()
+    if not latest:
+        await update.message.reply_text("❌ Нет доступных бэкапов!")
+        return
+    
+    # Сначала создаём бэкап текущей базы (на всякий случай)
+    auto_backup()
+    
+    if restore_from_backup(latest):
+        await update.message.reply_text(f"✅ *База данных восстановлена из последнего бэкапа!*\n🔄 Бот будет перезапущен...", parse_mode='Markdown')
+        os._exit(0)
+    else:
+        await update.message.reply_text("❌ *Ошибка восстановления!*", parse_mode='Markdown')
+
+
+async def backup_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Создать бэкап сейчас (админ)"""
+    if not await is_admin(update, context):
+        await update.message.reply_text("❌ Нет прав!")
+        return
+    
     try:
-        if os.path.exists('radcoin_bot.db'):
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup_name = f"radcoin_bot.db.backup_{timestamp}.db"
-            backup_path = os.path.join(BACKUP_DIR, backup_name)
-            shutil.copy('radcoin_bot.db', backup_path)
-            await update.message.reply_text(f"✅ *Бэкап создан:* `{backup_name}`", parse_mode='Markdown')
-        else:
-            await update.message.reply_text("❌ База не найдена!")
+        db_path = 'radcoin_bot.db'
+        if not os.path.exists(db_path):
+            await update.message.reply_text("❌ База данных не найдена!")
+            return
+        
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_name = f"radcoin_bot.db.backup_{timestamp}.db"
+        backup_path = os.path.join(BACKUP_DIR, backup_name)
+        shutil.copy2(db_path, backup_path)
+        
+        size = os.path.getsize(backup_path) / 1024
+        await update.message.reply_text(f"✅ *Бэкап создан:* `{backup_name}` ({size:.1f} КБ)", parse_mode='Markdown')
+        
     except Exception as e:
         logger.error(f"Error in backup_now: {e}")
         await update.message.reply_text("❌ Ошибка")
