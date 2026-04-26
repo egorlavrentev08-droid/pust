@@ -425,56 +425,271 @@ async def chest_open_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 items_gained['🥉 Тактическая броня'] = items_gained.get('🥉 Тактическая броня', 0) + 1
             if random.random() < 0.3:
                 add_item_to_inventory(user, 'винтовка', 1)
-                items_gained['🔫 Винтовка'] = items_gained.get('🔫 Винтовка', 0) + 1
-            if random.random() < 0.005 and not pet_gained:
-                pets = ['овчарка', 'волк', 'рысь', 'пума', 'попугай', 'кайот']
-                pet_gained = random.choice(pets)
+async def chest_open_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Открыть все сундуки подряд, получая все предметы"""
+    session = Session()
+    try:
+        user = session.query(User).filter_by(user_id=update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ /start")
+            return
+
+        total_common = user.chest_common
+        total_rare = user.chest_rare
+        total_epic = user.chest_epic
+        total_mythic = user.chest_mythic
+        total_legendary = user.chest_legendary
+
+        if total_common == 0 and total_rare == 0 and total_epic == 0 and total_mythic == 0 and total_legendary == 0:
+            await update.message.reply_text("🎁 *У вас нет сундуков!*", parse_mode='Markdown')
+            return
+
+        await update.message.reply_text(
+            f"🎁 *Начинаю открывать сундуки...*\n\n"
+            f"🟢 Обычных: {total_common}\n"
+            f"🔵 Редких: {total_rare}\n"
+            f"🟣 Эпических: {total_epic}\n"
+            f"🟡 Мифических: {total_mythic}\n"
+            f"🟠 Легендарных: {total_legendary}\n\n"
+            f"⏳ Подождите, идёт открытие...",
+            parse_mode='Markdown'
+        )
+
+        total_rc = 0
+        total_rf = 0
+        items_gained = {}
+        pet_gained = None
+        log_user_id = user.user_id
+        log_username = user.username
+
+        # Вспомогательная функция для добавления предметов
+        def add_item(item_name, count=1):
+            if item_name in items_gained:
+                items_gained[item_name] += count
+            else:
+                items_gained[item_name] = count
+
+        # ------------------------------------------------------------------
+        # 1. Обычные сундуки
+        # ------------------------------------------------------------------
+        for _ in range(user.chest_common):
+            items = ['rc', 'rf', 'medkit']
+            random.shuffle(items)
+            selected = items[:2]
+            for r in selected:
+                if r == 'rc':
+                    amt = random.randint(100, 500)
+                    total_rc += amt
+                    user.radcoins += amt
+                elif r == 'rf':
+                    amt = random.randint(2, 10)
+                    total_rf += amt
+                    user.radfragments += amt
+                elif r == 'medkit':
+                    add_item('💊 Аптечка')
+                    add_item_to_inventory(user, 'аптечка', 1)
+            user.chest_common -= 1
+
+        # ------------------------------------------------------------------
+        # 2. Редкие сундуки
+        # ------------------------------------------------------------------
+        for _ in range(user.chest_rare):
+            items = ['rc', 'rf', 'harpoon', 'armor1', 'medkit', 'energy']
+            random.shuffle(items)
+            selected = items[:3]
+            for r in selected:
+                if r == 'rc':
+                    amt = random.randint(500, 1500)
+                    total_rc += amt
+                    user.radcoins += amt
+                elif r == 'rf':
+                    amt = random.randint(10, 50)
+                    total_rf += amt
+                    user.radfragments += amt
+                elif r == 'harpoon':
+                    add_item('🎣 Гарпун')
+                    add_item_to_inventory(user, 'гарпун', 1)
+                elif r == 'armor1':
+                    add_item('🥉 Лёгкая броня')
+                    add_item_to_inventory(user, 'броня1', 1)
+                elif r == 'medkit':
+                    amt = random.randint(1, 3)
+                    add_item(f'💊 Аптечка x{amt}')
+                    add_item_to_inventory(user, 'аптечка', amt)
+                elif r == 'energy':
+                    add_item('⚡ Энергетик')
+                    add_item_to_inventory(user, 'энергетик', 1)
+            user.chest_rare -= 1
+
+        # ------------------------------------------------------------------
+        # 3. Эпические сундуки
+        # ------------------------------------------------------------------
+        for _ in range(user.chest_epic):
+            items = ['rc', 'rf', 'armor2', 'harpoon', 'medkit', 'energy', 'reducer', 'chest_common']
+            random.shuffle(items)
+            selected = items[:4]
+            for r in selected:
+                if r == 'rc':
+                    amt = random.randint(1000, 3000)
+                    total_rc += amt
+                    user.radcoins += amt
+                elif r == 'rf':
+                    amt = random.randint(50, 200)
+                    total_rf += amt
+                    user.radfragments += amt
+                elif r == 'armor2':
+                    add_item('🥈 Утяжеленная броня')
+                    add_item_to_inventory(user, 'броня2', 1)
+                elif r == 'harpoon':
+                    add_item('🎣 Гарпун')
+                    add_item_to_inventory(user, 'гарпун', 1)
+                elif r == 'medkit':
+                    amt = random.randint(1, 3)
+                    add_item(f'💊 Аптечка x{amt}')
+                    add_item_to_inventory(user, 'аптечка', amt)
+                elif r == 'energy':
+                    add_item('⚡ Энергетик')
+                    add_item_to_inventory(user, 'энергетик', 1)
+                elif r == 'reducer':
+                    add_item('⏱️ Редуктор')
+                    add_item_to_inventory(user, 'редуктор', 1)
+                elif r == 'chest_common':
+                    add_item('🟢 Обычный сундук')
+                    user.chest_common += 1
+            user.chest_epic -= 1
+
+        # ------------------------------------------------------------------
+        # 4. Мифические сундуки
+        # ------------------------------------------------------------------
+        for _ in range(user.chest_mythic):
+            items = ['rc', 'rf', 'armor3', 'rifle', 'harpoon', 'medkit', 'reducer', 'energy', 'pet', 'chest_epic']
+            random.shuffle(items)
+            selected = items[:4]
+            pet_added_this = False
+            for r in selected:
+                if r == 'rc':
+                    amt = random.randint(2500, 6000)
+                    total_rc += amt
+                    user.radcoins += amt
+                elif r == 'rf':
+                    amt = random.randint(150, 500)
+                    total_rf += amt
+                    user.radfragments += amt
+                elif r == 'armor3':
+                    add_item('🥉 Тактическая броня')
+                    add_item_to_inventory(user, 'броня3', 1)
+                elif r == 'rifle':
+                    add_item('🔫 Винтовка')
+                    add_item_to_inventory(user, 'винтовка', 1)
+                elif r == 'harpoon':
+                    add_item('🎣 Гарпун')
+                    add_item_to_inventory(user, 'гарпун', 1)
+                elif r == 'medkit':
+                    amt = random.randint(2, 5)
+                    add_item(f'💊 Аптечка x{amt}')
+                    add_item_to_inventory(user, 'аптечка', amt)
+                elif r == 'reducer':
+                    add_item('⏱️ Редуктор')
+                    add_item_to_inventory(user, 'редуктор', 1)
+                elif r == 'energy':
+                    amt = random.randint(2, 3)
+                    add_item(f'⚡ Энергетик x{amt}')
+                    add_item_to_inventory(user, 'энергетик', amt)
+                elif r == 'pet':
+                    if not pet_added_this and not pet_gained and random.random() < 0.005:
+                        pets = ['овчарка', 'волк', 'рысь', 'пума', 'попугай', 'кайот']
+                        pet_gained = random.choice(pets)
+                        user.pet = pet_gained
+                        pet_names = {
+                            'овчарка': '🐕 Овчарка', 'волк': '🐺 Волк',
+                            'рысь': '🐈 Рысь', 'пума': '🐆 Пума',
+                            'попугай': '🦜 Попугай', 'кайот': '🐕 Кайот'
+                        }
+                        add_item(f'🐾 {pet_names.get(pet_gained, pet_gained)}')
+                        pet_added_this = True
+                elif r == 'chest_epic':
+                    add_item('🟣 Эпический сундук')
+                    user.chest_epic += 1
             user.chest_mythic -= 1
-        
+
+        # ------------------------------------------------------------------
+        # 5. Легендарные сундуки
+        # ------------------------------------------------------------------
         for _ in range(user.chest_legendary):
-            amt_rc = random.randint(5000, 15000)
-            amt_rf = random.randint(500, 1500)
-            total_rc += amt_rc
-            total_rf += amt_rf
-            if random.random() < 0.5:
-                add_item_to_inventory(user, 'броня5', 1)
-                items_gained['🥇 Силовая броня'] = items_gained.get('🥇 Силовая броня', 0) + 1
-            if random.random() < 0.3:
-                add_item_to_inventory(user, 'гаусс', 1)
-                items_gained['⚡ Винтовка Гаусса'] = items_gained.get('⚡ Винтовка Гаусса', 0) + 1
-            if random.random() < 0.02 and not pet_gained:
-                pets = ['овчарка', 'волк', 'рысь', 'пума', 'попугай', 'кайот']
-                pet_gained = random.choice(pets)
+            items = ['rc', 'rf', 'armor5', 'gauss', 'medkit', 'reducer', 'energy', 'pet', 'harpoon', 'chest_mythic']
+            random.shuffle(items)
+            selected = items[:5]
+            pet_added_this = False
+            for r in selected:
+                if r == 'rc':
+                    amt = random.randint(5000, 15000)
+                    total_rc += amt
+                    user.radcoins += amt
+                elif r == 'rf':
+                    amt = random.randint(500, 1500)
+                    total_rf += amt
+                    user.radfragments += amt
+                elif r == 'armor5':
+                    add_item('🥇 Силовая броня')
+                    add_item_to_inventory(user, 'броня5', 1)
+                elif r == 'gauss':
+                    add_item('⚡ Винтовка Гаусса')
+                    add_item_to_inventory(user, 'гаусс', 1)
+                elif r == 'medkit':
+                    amt = random.randint(2, 5)
+                    add_item(f'💊 Аптечка x{amt}')
+                    add_item_to_inventory(user, 'аптечка', amt)
+                elif r == 'reducer':
+                    add_item('⏱️ Редуктор')
+                    add_item_to_inventory(user, 'редуктор', 1)
+                elif r == 'energy':
+                    amt = random.randint(3, 5)
+                    add_item(f'⚡ Энергетик x{amt}')
+                    add_item_to_inventory(user, 'энергетик', amt)
+                elif r == 'pet':
+                    if not pet_added_this and not pet_gained and random.random() < 0.02:
+                        pets = ['овчарка', 'волк', 'рысь', 'пума', 'попугай', 'кайот']
+                        pet_gained = random.choice(pets)
+                        user.pet = pet_gained
+                        pet_names = {
+                            'овчарка': '🐕 Овчарка', 'волк': '🐺 Волк',
+                            'рысь': '🐈 Рысь', 'пума': '🐆 Пума',
+                            'попугай': '🦜 Попугай', 'кайот': '🐕 Кайот'
+                        }
+                        add_item(f'🐾 {pet_names.get(pet_gained, pet_gained)}')
+                        pet_added_this = True
+                elif r == 'harpoon':
+                    add_item('🎣 Гарпун')
+                    add_item_to_inventory(user, 'гарпун', 1)
+                elif r == 'chest_mythic':
+                    add_item('🟡 Мифический сундук')
+                    user.chest_mythic += 1
             user.chest_legendary -= 1
-        
-        user.radcoins += total_rc
-        user.radfragments += total_rf
-        
-        if pet_gained:
-            user.pet = pet_gained
-        
+
+        # Сохраняем изменения
         session.commit()
-        
-        # Логирование открытия всех сундуков
-        if total_rc > 0 or total_rf > 0:
-            log_user_action(
-                user_id=log_user_id,
-                username=log_username,
-                action='chest_open_all',
-                amount_rc=total_rc,
-                amount_rf=total_rf
-            )
-        
-        result_text = f"🎁 *Результат открытия*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        # Логирование
+        log_user_action(
+            user_id=log_user_id,
+            username=log_username,
+            action='chest_open_all',
+            amount_rc=total_rc,
+            amount_rf=total_rf,
+            item=f"common:{total_common}, rare:{total_rare}, epic:{total_epic}, mythic:{total_mythic}, legendary:{total_legendary}"
+        )
+
+        # Формируем результат
+        result_text = f"🎁 *Результат открытия сундуков*\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         result_text += f"💰 *Получено:*\n"
         result_text += f"☢️ +{total_rc} RC\n"
         result_text += f"☣️ +{total_rf} RF\n\n"
-        
+
         if items_gained:
             result_text += f"📦 *Предметы:*\n"
             for item, count in items_gained.items():
                 result_text += f"• {item} x{count}\n"
-        
+
         if pet_gained:
             pet_names = {
                 'овчарка': '🐕 Овчарка', 'волк': '🐺 Волк',
@@ -482,13 +697,13 @@ async def chest_open_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'попугай': '🦜 Попугай', 'кайот': '🐕 Кайот'
             }
             result_text += f"\n🐾 *Новый питомец:* {pet_names.get(pet_gained, pet_gained)}!\n"
-        
+
         await update.message.reply_text(result_text, parse_mode='Markdown')
-        
+
     except Exception as e:
         logger.error(f"Error in chest_open_all: {e}")
         session.rollback()
-        await update.message.reply_text("❌ Ошибка")
+        await update.message.reply_text("❌ Ошибка при открытии сундуков")
     finally:
         Session.remove()
 
