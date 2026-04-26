@@ -1,6 +1,5 @@
 # config.py - Централизованные настройки и константы
-# Версия: 2.0.0
-# Без зависимостей от других модулей!
+# Версия: 3.0.0
 
 import logging
 import os
@@ -38,6 +37,7 @@ CASINO_MAX_BET = 1000000
 # ==================== БЭКАПЫ ====================
 BACKUP_DIR = '/app/backups'
 BACKUP_RETENTION_DAYS = 3
+BACKUP_INTERVAL_MINUTES = 15
 
 # Создаём папку для бэкапов, если её нет
 if not os.path.exists(BACKUP_DIR):
@@ -52,7 +52,7 @@ FACTORIES = {
         'income': 1,
         'income_type': 'RF',
         'level': 1,
-        'duration': 72
+        'duration': 72,
     },
     'мастерская': {
         'name': '🔧 Мастерская',
@@ -61,7 +61,7 @@ FACTORIES = {
         'income': 5,
         'income_type': 'RF',
         'level': 5,
-        'duration': 72
+        'duration': 72,
     },
     'станция': {
         'name': '⚡ Станция',
@@ -70,7 +70,7 @@ FACTORIES = {
         'income': 12,
         'income_type': 'RF',
         'level': 7,
-        'duration': 72
+        'duration': 72,
     },
     'дамба': {
         'name': '🌊 Дамба',
@@ -79,7 +79,7 @@ FACTORIES = {
         'income': 25,
         'income_type': 'RF',
         'level': 10,
-        'duration': 72
+        'duration': 72,
     },
     'химка': {
         'name': '🧪 Химка',
@@ -88,7 +88,7 @@ FACTORIES = {
         'income': 40,
         'income_type': 'RF',
         'level': 15,
-        'duration': 72
+        'duration': 72,
     },
     'комплекс': {
         'name': '🏭 Комплекс',
@@ -97,7 +97,7 @@ FACTORIES = {
         'income': 100,
         'income_type': 'RF',
         'level': 25,
-        'duration': 72
+        'duration': 72,
     },
     'реактор': {
         'name': '☢️ Реактор',
@@ -106,8 +106,8 @@ FACTORIES = {
         'income': 1000,
         'income_type': 'RF',
         'level': 50,
-        'duration': 72
-    }
+        'duration': 72,
+    },
 }
 
 # ==================== ЛОГГЕР ====================
@@ -118,7 +118,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (БЕЗ ЗАВИСИМОСТЕЙ) ====================
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 def get_exp_for_level(level):
     """Опыт для повышения уровня"""
@@ -159,104 +159,4 @@ def get_random_interval(user=None):
         base = base // 2
     if user and hasattr(user, 'pet') and user.pet == 'кайот':
         base = base // 2
-    return max(base, 5)        'slots': 25,
-        'price': 10000,
-        'income': 12,
-        'income_type': 'RF',
-        'level': 7,
-        'duration': 72
-    },
-    'дамба': {
-        'name': '🌊 Дамба',
-        'slots': 10,
-        'price': 15000,
-        'income': 25,
-        'income_type': 'RF',
-        'level': 10,
-        'duration': 72
-    },
-    'химка': {
-        'name': '🧪 Химка',
-        'slots': 7,
-        'price': 25000,
-        'income': 40,
-        'income_type': 'RF',
-        'level': 15,
-        'duration': 72
-    },
-    'комплекс': {
-        'name': '🏭 Комплекс',
-        'slots': 5,
-        'price': 100000,
-        'income': 100,
-        'income_type': 'RF',
-        'level': 25,
-        'duration': 72
-    },
-    'реактор': {
-        'name': '☢️ Реактор',
-        'slots': 3,
-        'price': 500000,
-        'income': 1000,
-        'income_type': 'RF',
-        'level': 50,
-        'duration': 72
-    }
-}
-
-# ==================== ЛОГГЕР ====================
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# ==================== БЭКАПЫ ====================
-import os
-BACKUP_DIR = '/app/data/backups'
-if not os.path.exists(BACKUP_DIR):
-    os.makedirs(BACKUP_DIR)
-
-# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (БЕЗ ЗАВИСИМОСТЕЙ) ====================
-
-def get_exp_for_level(level):
-    """Опыт для повышения уровня"""
-    if level <= 1:
-        return 0
-    if level > MAX_LEVEL:
-        level = MAX_LEVEL
-    total = 0
-    for i in range(2, level + 1):
-        total += 100 + (i - 2) * 50
-    return total
-
-def calculate_reward(level):
-    """Базовая награда RC"""
-    import random
-    level = min(level, MAX_LEVEL)
-    base = random.randint(11, 150)
-    bonus = 1 + (level - 1) * 0.05
-    if bonus > 1 + (MAX_LEVEL - 1) * 0.05:
-        bonus = 1 + (MAX_LEVEL - 1) * 0.05
-    return int(base * bonus)
-
-def calculate_experience():
-    """Базовая награда опыта"""
-    import random
-    return random.randint(10, 50)
-
-def get_random_interval(user=None):
-    """Интервал между сборами"""
-    import random
-    from datetime import datetime
-    
-    base = random.randint(30, 120)
-    if user and hasattr(user, 'cooldown_reducer_until') and user.cooldown_reducer_until and user.cooldown_reducer_until > datetime.now():
-        base = base // 2
-    if user and hasattr(user, 'pet') and user.pet == 'кайот':
-        base = base // 2
     return max(base, 5)
-
-BACKUP_DIR = '/app/backups'  # НЕ /app/data/backups!
-BACKUP_INTERVAL_MINUTES = 15
-BACKUP_RETENTION_DAYS = 3
