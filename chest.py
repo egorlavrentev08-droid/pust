@@ -409,22 +409,7 @@ async def chest_open_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total_rf += amt_rf
             if random.random() < 0.4:
                 add_item_to_inventory(user, 'броня2', 1)
-                items_gained['🥈 Утяжеленная броня'] = items_gained.get('🥈 Утяжеленная броня', 0) + 1
-            if random.random() < 0.3:
-                add_item_to_inventory(user, 'редуктор', 1)
-                items_gained['⏱️ Редуктор'] = items_gained.get('⏱️ Редуктор', 0) + 1
-            user.chest_epic -= 1
-        
-        for _ in range(user.chest_mythic):
-            amt_rc = random.randint(2500, 6000)
-            amt_rf = random.randint(150, 500)
-            total_rc += amt_rc
-            total_rf += amt_rf
-            if random.random() < 0.4:
-                add_item_to_inventory(user, 'броня3', 1)
-                items_gained['🥉 Тактическая броня'] = items_gained.get('🥉 Тактическая броня', 0) + 1
-            if random.random() < 0.3:
-                add_item_to_inventory(user, 'винтовка', 1)
+
 async def chest_open_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Открыть все сундуки подряд, получая все предметы"""
     session = Session()
