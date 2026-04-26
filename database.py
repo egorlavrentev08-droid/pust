@@ -127,11 +127,11 @@ class Clan(Base):
     double_bonus = Column(Integer, default=0)
     
     # Клановые города (НОВЫЕ ПОЛЯ)
-    city_level = Column(Integer, default=0)                     # 0 — нет города, 1-4 уровень резиденции
-    city_buildings = Column(String, default='{}')              # JSON {"id": {"type": "bank", "level": 1}}
-    city_resources = Column(String, default='{"crystals": 0, "storage": {}}')  # JSON ресурсы клана
-    city_production = Column(String, default='[]')             # JSON очередь производства
-    last_raid = Column(DateTime, nullable=True)                # время последнего рейда
+    # city_level = Column(Integer, default=0)                     # 0 — нет города, 1-4 уровень резиденции
+    # city_buildings = Column(String, default='{}')              # JSON {"id": {"type": "bank", "level": 1}}
+    # city_resources = Column(String, default='{"crystals": 0, "storage": {}}')  # JSON ресурсы клана
+    # city_production = Column(String, default='[]')             # JSON очередь производства
+    # last_raid = Column(DateTime, nullable=True)                # время последнего рейда
 
 
 # ==================== МОДЕЛЬ ЛОГОВ ====================
