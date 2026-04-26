@@ -33,7 +33,6 @@ from admin import
     admin_classes, call, lscall, admin_hide, top_command, acasino,
     advice_handler, gchest, admin_players, sale, check_user, admin_reset
 )
-)
 
 # Создаём шедулер
 scheduler = AsyncIOScheduler()
