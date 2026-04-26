@@ -8,6 +8,8 @@ import shutil
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram.ext import CommandHandler, MessageHandler, filters
+from telegram import Update
+from telegram.ext import ContextTypes
 
 # Импорты из config
 from config import logger, TOKEN, CASINO_PUBLIC_CHANCE, CASINO_PUBLIC_CASH_MULT, SHOP_LIMITS, BACKUP_DIR, BACKUP_RETENTION_DAYS
