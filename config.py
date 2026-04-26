@@ -151,3 +151,7 @@ def get_random_interval(user=None):
     if user and hasattr(user, 'pet') and user.pet == 'кайот':
         base = base // 2
     return max(base, 5)
+
+BACKUP_DIR = '/app/backups'  # НЕ /app/data/backups!
+BACKUP_INTERVAL_MINUTES = 15
+BACKUP_RETENTION_DAYS = 3
