@@ -35,7 +35,7 @@ CASINO_MIN_BET = 100
 CASINO_MAX_BET = 1000000
 
 # ==================== БЭКАПЫ ====================
-BACKUP_DIR = '/app/backups'
+BACKUP_DIR = '/app/shared/backups'
 BACKUP_RETENTION_DAYS = 3
 BACKUP_INTERVAL_MINUTES = 15
 
