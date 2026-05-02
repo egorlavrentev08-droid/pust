@@ -163,3 +163,6 @@ def get_user_by_username(session, username):
     """Найти пользователя по username (без учёта регистра)"""
     from sqlalchemy import func
     return session.query(User).filter(func.lower(User.username) == username.lower()).first()
+
+# В конец utils.py добавить:
+log_user_action = safe_log_user_action
