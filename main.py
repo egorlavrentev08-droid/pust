@@ -155,7 +155,7 @@ def register_handlers(app):
 
 def init_bot_data(app):
     """Инициализация данных бота"""
-    app.bot_data['phase'] = 2
+    app.bot_data['phase'] = 1
     app.bot_data['casino_public_chance'] = CASINO_PUBLIC_CHANCE
     app.bot_data['casino_public_cash_mult'] = CASINO_PUBLIC_CASH_MULT
     app.bot_data['radio_groups'] = set()
